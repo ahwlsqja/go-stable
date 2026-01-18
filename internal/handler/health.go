@@ -10,11 +10,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// 헬스 체크 핸들러
 type HealthHandler struct {
 	db    *sql.DB
 	redis *redis.Client
 }
 
+// DB와 Redis 의존성을 주입하여 HealthHandler를 생성한다.
 func NewHealthHandler(db *sql.DB, redis *redis.Client) *HealthHandler {
 	return &HealthHandler{
 		db:    db,
