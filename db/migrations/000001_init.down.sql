@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS idempotency_keys;
+DROP TABLE IF EXISTS outbox;
+DROP TABLE IF EXISTS settlements;
+DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS ledger_entries;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS inventory_logs;
+DROP TABLE IF EXISTS inventories;
+DROP TABLE IF EXISTS products;

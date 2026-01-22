@@ -1,0 +1,69 @@
+basePath: /api/v1
+definitions:
+  internal_common_handler.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  internal_common_handler.ReadyResponse:
+    properties:
+      db:
+        example: ok
+        type: string
+      redis:
+        example: ok
+        type: string
+      status:
+        example: ok
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: 재고관리 + 주문처리 + 스테이블코인 정산 API
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: B2B Commerce Settlement Engine API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: Returns server health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_common_handler.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /ready:
+    get:
+      description: Returns server readiness status including DB and Redis connectivity
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_common_handler.ReadyResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_common_handler.ReadyResponse'
+      summary: Readiness check
+      tags:
+      - health
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"

@@ -10,17 +10,38 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ahwlsqja/go-stable/docs"
+	"github.com/ahwlsqja/go-stable/internal/common/handler"
+	"github.com/ahwlsqja/go-stable/internal/common/middleware"
 	"github.com/ahwlsqja/go-stable/internal/config"
-	"github.com/ahwlsqja/go-stable/internal/handler"
-	"github.com/ahwlsqja/go-stable/internal/middleware"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/redis/go-redis/v9"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
 )
 
+// @title B2B Commerce Settlement Engine API
+// @version 1.0
+// @description 재고관리 + 주문처리 + 스테이블코인 정산 API
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.email support@example.com
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+// @BasePath /api/v1
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name X-API-Key
+
 func main() {
-	// Initialize logger
+	// 1) 로거 초기화
 	logger, err := initLogger()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
@@ -28,7 +49,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	// Load config
+	// 2) 설정 로드
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
@@ -39,26 +60,26 @@ func main() {
 		zap.String("addr", cfg.Server.Addr()),
 	)
 
-	// Initialize DB
+	// 3) DB 초기화
 	db, err := initDB(cfg.Database)
 	if err != nil {
 		logger.Fatal("failed to connect to database", zap.Error(err))
 	}
 	defer db.Close()
 
-	// Initialize Redis
+	// 4) Redis 초기화
 	rdb := initRedis(cfg.Redis)
 	defer rdb.Close()
 
-	// Test connections
+	// 5) 연결 테스트 (fail-fast)
 	if err := testConnections(db, rdb); err != nil {
 		logger.Fatal("failed to test connections", zap.Error(err))
 	}
 
-	// Setup router
+	// 6) 라우터 구성
 	router := setupRouter(cfg, logger, db, rdb)
 
-	// Create server
+	// 7) HTTP 서버 생성
 	srv := &http.Server{
 		Addr:         cfg.Server.Addr(),
 		Handler:      router,
@@ -66,23 +87,26 @@ func main() {
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
-	// Start server in goroutine
+	// 8) 서버 비동기 시작
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("failed to start server", zap.Error(err))
 		}
 	}()
 
-	logger.Info("server started", zap.String("addr", cfg.Server.Addr()))
+	logger.Info("server started",
+		zap.String("addr", cfg.Server.Addr()),
+		zap.String("swagger", fmt.Sprintf("http://localhost:%d/swagger/index.html", cfg.Server.Port)),
+	)
 
-	// Wait for interrupt signal
+	// 9) 종료 시그널 대기
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("shutting down server...")
 
-	// Graceful shutdown with timeout
+	// 10) Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -149,13 +173,30 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, db *sql.DB, rdb *redis.
 	router.Use(middleware.RequestID())
 	router.Use(middleware.Logger(logger))
 
-	// Health handlers
+	// Swagger 설정
+	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%d", cfg.Server.Port)
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Health endpoints
 	healthHandler := handler.NewHealthHandler(db, rdb)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/ready", healthHandler.Ready)
 
-	// API v1 group (placeholder for future routes)
-	_ = router.Group("/api/v1")
+	// API v1 group
+	v1 := router.Group("/api/v1")
+	{
+		// Phase 1: Products & Inventory (TODO)
+		_ = v1.Group("/products")
+		_ = v1.Group("/inventory")
+
+		// Phase 2: Orders (TODO)
+		_ = v1.Group("/orders")
+
+		// Phase 3: Payments & Settlements (TODO)
+		_ = v1.Group("/payments")
+		_ = v1.Group("/settlements")
+		_ = v1.Group("/accounts")
+	}
 
 	return router
 }
