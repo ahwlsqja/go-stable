@@ -596,6 +596,159 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 
 **인덱스:**
 - `INDEX idx_status_retry (status, next_retry_at)` - Worker 폴링용
+- `INDEX idx_aggregate (aggregate_type, aggregate_id)` - 집합 조회용
+
+#### 4.2.9 settlements (정산)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 정산 ID |
+| payment_id | BIGINT UNSIGNED | FK, NOT NULL | 결제 참조 |
+| payee_account_id | BIGINT UNSIGNED | FK, NOT NULL | 수취자 계정 |
+| amount | DECIMAL(18,8) | NOT NULL | 정산 총액 |
+| fee_amount | DECIMAL(18,8) | NOT NULL, DEFAULT 0 | 수수료 금액 |
+| net_amount | DECIMAL(18,8) | NOT NULL | 순 정산액 (amount - fee_amount) |
+| status | ENUM | NOT NULL | 정산 상태 |
+| settled_at | TIMESTAMP | NULL | 정산 완료 시각 |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
+
+**status ENUM 값:**
+- PENDING: 정산 대기
+- PROCESSING: 정산 처리 중 (체인 트랜잭션 전송됨)
+- COMPLETED: 정산 완료
+- FAILED: 정산 실패
+
+**관계:**
+- `payments` 테이블과 **1:1 관계** (하나의 결제에 하나의 정산)
+- `accounts` 테이블과 **N:1 관계** (payee_account_id)
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `INDEX idx_payment_id (payment_id)` - 결제별 정산 조회
+- `INDEX idx_payee_status (payee_account_id, status)` - 수취자별 정산 목록
+- `INDEX idx_status (status)` - 상태별 정산 조회
+
+**비즈니스 규칙:**
+```sql
+-- net_amount 계산 검증
+CONSTRAINT chk_net_amount CHECK (net_amount = amount - fee_amount)
+CONSTRAINT chk_amounts CHECK (amount >= 0 AND fee_amount >= 0 AND net_amount >= 0)
+```
+
+#### 4.2.10 idempotency_keys (멱등성 키)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 레코드 ID |
+| idempotency_key | VARCHAR(128) | UNIQUE, NOT NULL | 멱등성 키 (클라이언트 제공) |
+| request_path | VARCHAR(255) | NOT NULL | 요청 경로 (예: POST /api/v1/payments) |
+| request_hash | VARCHAR(64) | NOT NULL | 요청 본문 해시 (SHA-256) |
+| response_status | INT | NULL | 저장된 응답 HTTP 상태 코드 |
+| response_body | TEXT | NULL | 저장된 응답 본문 (JSON) |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| expires_at | TIMESTAMP | NOT NULL | 만료 시각 |
+
+**목적:**
+- 네트워크 오류, 클라이언트 재시도 시 **동일 요청의 중복 처리 방지**
+- 동일 idempotency_key로 재요청 시 저장된 응답 반환 (재처리 없음)
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `UNIQUE KEY (idempotency_key)` - 키 중복 방지
+- `INDEX idx_expires (expires_at)` - 만료 키 정리용
+
+**사용 흐름:**
+```
+1. 클라이언트 요청: POST /payments + X-Idempotency-Key: "abc123"
+
+2. 서버 처리:
+   ┌─────────────────────────────────────────────────────────────┐
+   │ SELECT * FROM idempotency_keys WHERE idempotency_key = ?   │
+   ├─────────────────────────────────────────────────────────────┤
+   │ 존재함 → 저장된 response_status, response_body 반환        │
+   │ 미존재 → 비즈니스 로직 실행 → INSERT 후 응답 반환          │
+   └─────────────────────────────────────────────────────────────┘
+
+3. 정리 (배치):
+   DELETE FROM idempotency_keys WHERE expires_at < NOW()
+```
+
+**request_hash 사용 이유:**
+```
+동일 idempotency_key로 다른 요청 본문이 오면 충돌 감지
+→ 409 Conflict 반환 (IDEMPOTENCY_CONFLICT 에러)
+```
+
+**만료 정책:**
+- 기본 TTL: 24시간
+- 결제 관련: 7일 (분쟁 대응)
+
+#### 4.2.11 audit_logs (감사 로그)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 로그 ID |
+| actor_type | VARCHAR(20) | NOT NULL | 행위자 유형 (USER, SYSTEM, WORKER, ADMIN) |
+| actor_id | BIGINT UNSIGNED | NULL | 행위자 ID (USER일 경우) |
+| action | VARCHAR(64) | NOT NULL | 수행된 작업 |
+| resource_type | VARCHAR(32) | NOT NULL | 대상 리소스 타입 |
+| resource_id | BIGINT UNSIGNED | NULL | 대상 리소스 ID |
+| old_value | JSON | NULL | 변경 전 값 |
+| new_value | JSON | NULL | 변경 후 값 |
+| ip_address | VARCHAR(45) | NULL | 클라이언트 IP (IPv6 지원) |
+| user_agent | VARCHAR(255) | NULL | 클라이언트 User-Agent |
+| request_id | VARCHAR(64) | NULL | 요청 추적 ID |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+
+**특징:** INSERT ONLY (불변 테이블) - 수정/삭제 불가
+
+**actor_type 값:**
+| 값 | 설명 |
+|-----|------|
+| USER | 일반 사용자 API 호출 |
+| ADMIN | 관리자 작업 |
+| SYSTEM | 시스템 자동 처리 |
+| WORKER | 백그라운드 워커 |
+
+**action 예시:**
+| action | 설명 |
+|--------|------|
+| ORDER_CREATED | 주문 생성 |
+| ORDER_STATUS_CHANGED | 주문 상태 변경 |
+| PAYMENT_AUTHORIZED | 결제 승인 |
+| PAYMENT_CAPTURED | 결제 캡처 |
+| PAYMENT_REFUNDED | 결제 환불 |
+| INVENTORY_RESERVED | 재고 예약 |
+| INVENTORY_DEDUCTED | 재고 차감 |
+| SETTLEMENT_COMPLETED | 정산 완료 |
+| ACCOUNT_BALANCE_CHANGED | 잔액 변경 |
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `INDEX idx_resource (resource_type, resource_id)` - 리소스별 이력 조회
+- `INDEX idx_actor (actor_type, actor_id, created_at)` - 행위자별 이력 조회
+- `INDEX idx_action (action, created_at)` - 작업 유형별 조회
+- `INDEX idx_request_id (request_id)` - 요청 추적
+
+**old_value / new_value 예시:**
+```json
+// ORDER_STATUS_CHANGED
+{
+  "old_value": {"status": "PENDING"},
+  "new_value": {"status": "CONFIRMED"}
+}
+
+// ACCOUNT_BALANCE_CHANGED
+{
+  "old_value": {"balance": "1000.00", "hold_balance": "0.00"},
+  "new_value": {"balance": "900.00", "hold_balance": "100.00"}
+}
+```
+
+**보관 정책:**
+- 금융 규정상 **최소 5년 보관** 권장
+- 파티셔닝 또는 아카이빙 전략 필요 (월별/년별)
 
 ### 4.3 인덱스 전략
 
