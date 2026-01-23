@@ -725,7 +725,35 @@ On-chain → Treasury                 User Account →
   ◄──────► N:M (Many-to-Many, 중간 테이블 필요)
 ```
 
-### 4.1.1 테이블 관계 (Cardinality)
+### 4.1.6 전체 테이블 요약 (17개)
+
+| # | 테이블명 | 레이어 | 주요 기능 | 불변 여부 | OL |
+|---|----------|--------|----------|-----------|-----|
+| 1 | **users** | Identity | 사용자 정보, KYC | ❌ | ❌ |
+| 2 | **wallets** | Identity | 사용자 EVM 지갑 | ❌ | ❌ |
+| 3 | **system_wallets** | Identity | 시스템 지갑 (TREASURY 등) | ❌ | ❌ |
+| 4 | **accounts** | Account | 내부 잔액 관리 | ❌ | ✅ |
+| 5 | **ledger_entries** | Account | 복식부기 원장 | ✅ | ❌ |
+| 6 | **deposits** | Bridge | On-chain → Off-chain | ❌ | ❌ |
+| 7 | **withdrawals** | Bridge | Off-chain → On-chain | ❌ | ❌ |
+| 8 | **products** | Commerce | 상품 정보 | ❌ | ❌ |
+| 9 | **inventories** | Commerce | 재고 관리 | ❌ | ✅ |
+| 10 | **inventory_logs** | Commerce | 재고 변동 이력 | ✅ | ❌ |
+| 11 | **orders** | Commerce | 주문 관리 | ❌ | ❌ |
+| 12 | **order_items** | Commerce | 주문 상품 | ❌ | ❌ |
+| 13 | **payments** | Payment | 결제 관리 | ❌ | ❌ |
+| 14 | **settlements** | Payment | 정산 관리 | ❌ | ❌ |
+| 15 | **outbox** | Infra | Transactional Outbox | ❌ | ❌ |
+| 16 | **idempotency_keys** | Infra | 멱등성 보장 | ❌ | ❌ |
+| 17 | **audit_logs** | Infra | 감사 로그 | ✅ | ❌ |
+
+**범례:**
+- **불변 여부**: ✅ = INSERT ONLY (수정/삭제 불가)
+- **OL**: ✅ = Optimistic Lock (version 컬럼 사용)
+
+---
+
+### 4.1.7 테이블 관계 (Cardinality)
 
 #### 관계 다이어그램
 
@@ -826,9 +854,233 @@ outbox.aggregate_type + aggregate_id:
 
 > **참고**: 금융 시스템에서는 대부분 **Soft Delete** (status='DELETED') 사용 권장
 
-### 4.2 테이블 상세 명세
+### 4.2 테이블 상세 명세 (17 테이블)
 
-#### 4.2.1 products (상품)
+---
+
+#### 4.2.1 users (사용자) - NEW
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 사용자 ID |
+| email | VARCHAR(255) | UNIQUE, NOT NULL | 이메일 (로그인 ID) |
+| external_id | VARCHAR(64) | UNIQUE | 외부 인증 ID (OAuth 등) |
+| name | VARCHAR(100) | NOT NULL | 이름 |
+| phone | VARCHAR(20) | | 전화번호 |
+| role | ENUM | NOT NULL, DEFAULT 'BUYER' | BUYER, SELLER, BOTH, ADMIN |
+| kyc_status | ENUM | NOT NULL, DEFAULT 'NONE' | NONE, PENDING, VERIFIED, REJECTED |
+| kyc_verified_at | TIMESTAMP | NULL | KYC 검증 완료 시각 |
+| status | ENUM | NOT NULL, DEFAULT 'ACTIVE' | ACTIVE, SUSPENDED, DELETED |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `UNIQUE KEY uk_email (email)`
+- `UNIQUE KEY uk_external_id (external_id)`
+- `INDEX idx_status (status)`
+- `INDEX idx_role (role)`
+
+**역할 설명:**
+| role | 설명 | 가능한 작업 |
+|------|------|------------|
+| BUYER | 구매자 | 주문 생성, 결제 |
+| SELLER | 판매자 | 상품 등록, 정산 수령 |
+| BOTH | 구매자+판매자 | 모든 작업 |
+| ADMIN | 관리자 | 시스템 관리 |
+
+**KYC 흐름:**
+```
+NONE → PENDING → VERIFIED
+                ↘ REJECTED → PENDING (재신청)
+```
+
+---
+
+#### 4.2.2 wallets (사용자 지갑) - NEW
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 지갑 ID |
+| user_id | BIGINT UNSIGNED | FK, NOT NULL | 사용자 참조 |
+| address | VARCHAR(42) | UNIQUE, NOT NULL | EVM 주소 (0x...) |
+| label | VARCHAR(50) | | 별칭 (예: "메인 지갑") |
+| is_primary | BOOLEAN | NOT NULL, DEFAULT FALSE | 기본 지갑 여부 |
+| is_verified | BOOLEAN | NOT NULL, DEFAULT FALSE | 주소 검증 완료 여부 |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `UNIQUE KEY uk_address (address)`
+- `INDEX idx_user_id (user_id)`
+- `INDEX idx_user_primary (user_id, is_primary)`
+
+**비즈니스 규칙:**
+- 사용자당 여러 지갑 등록 가능
+- `is_primary = TRUE`인 지갑은 사용자당 1개만 허용
+- 출금 시 반드시 `is_verified = TRUE` 필요
+
+**주소 검증 방법:**
+```
+1. 서버가 서명 요청 메시지 생성
+2. 사용자가 지갑으로 서명
+3. ecrecover로 주소 검증
+4. is_verified = TRUE 업데이트
+```
+
+---
+
+#### 4.2.3 system_wallets (시스템 지갑) - NEW
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 시스템 지갑 ID |
+| wallet_type | ENUM | UNIQUE, NOT NULL | 지갑 유형 |
+| address | VARCHAR(42) | UNIQUE, NOT NULL | EVM 주소 |
+| description | VARCHAR(255) | | 설명 |
+| is_active | BOOLEAN | NOT NULL, DEFAULT TRUE | 활성 여부 |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
+
+**wallet_type ENUM 값:**
+
+| 유형 | 용도 | 설명 |
+|------|------|------|
+| TREASURY | 입금 수신 | 사용자가 입금 시 전송하는 주소 |
+| MINTER | 토큰 발행 | KRWS 민팅 권한 보유 |
+| BURNER | 토큰 소각 | KRWS 소각 권한 보유 |
+| HOT_WALLET | 일상 운영 | 출금 처리용 (자동) |
+| COLD_WALLET | 대량 보관 | 대량 자산 보관 (수동, 멀티시그) |
+
+**지갑 구조:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     System Wallet Architecture                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   [User Wallet]                                                  │
+│        │                                                         │
+│        │ 입금                                                    │
+│        ▼                                                         │
+│   [TREASURY]  ←── 입금 감지, accounts 잔액 증가                 │
+│        │                                                         │
+│        │ 필요시 이동                                             │
+│        ▼                                                         │
+│   [HOT_WALLET] ←── 출금 처리용 (자동화)                         │
+│        │                                                         │
+│        │ 출금                                                    │
+│        ▼                                                         │
+│   [User Wallet]                                                  │
+│                                                                  │
+│   [COLD_WALLET] ←── 대량 보관 (멀티시그, 수동)                  │
+│                                                                  │
+│   [MINTER] / [BURNER] ←── KRWS 토큰 컨트랙트 권한              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 4.2.4 deposits (입금) - NEW
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 입금 ID |
+| user_id | BIGINT UNSIGNED | FK, NOT NULL | 사용자 참조 |
+| account_id | BIGINT UNSIGNED | FK, NOT NULL | 크레딧 대상 계정 |
+| tx_hash | VARCHAR(66) | UNIQUE, NOT NULL | 체인 트랜잭션 해시 |
+| from_address | VARCHAR(42) | NOT NULL | 송금자 주소 |
+| amount | DECIMAL(18,8) | NOT NULL | 입금 금액 |
+| block_number | BIGINT UNSIGNED | | 블록 번호 |
+| status | ENUM | NOT NULL | 입금 상태 |
+| confirmed_at | TIMESTAMP | NULL | 컨펌 완료 시각 |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
+
+**status ENUM 값:**
+
+| 상태 | 설명 |
+|------|------|
+| DETECTED | 트랜잭션 감지됨 |
+| CONFIRMING | 컨펌 대기 중 (N confirmations) |
+| CREDITED | 계정에 반영됨 |
+| COMPLETED | 처리 완료 |
+| FAILED | 처리 실패 |
+
+**입금 흐름:**
+```
+┌─────────┐  detect   ┌───────────┐  confirm   ┌──────────┐  credit   ┌───────────┐
+│DETECTED │──────────►│CONFIRMING │───────────►│ CREDITED │──────────►│ COMPLETED │
+└─────────┘           └───────────┘            └──────────┘           └───────────┘
+                                                    │
+                                                    │ (accounts.balance 증가)
+                                                    │ (ledger_entry CREDIT 생성)
+```
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `UNIQUE KEY uk_tx_hash (tx_hash)`
+- `INDEX idx_user_status (user_id, status)`
+- `INDEX idx_status (status)`
+
+---
+
+#### 4.2.5 withdrawals (출금) - NEW
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 출금 ID |
+| user_id | BIGINT UNSIGNED | FK, NOT NULL | 사용자 참조 |
+| account_id | BIGINT UNSIGNED | FK, NOT NULL | 출금 원본 계정 |
+| to_address | VARCHAR(42) | NOT NULL | 수신 주소 |
+| amount | DECIMAL(18,8) | NOT NULL | 출금 금액 |
+| fee_amount | DECIMAL(18,8) | NOT NULL, DEFAULT 0 | 수수료 |
+| status | ENUM | NOT NULL | 출금 상태 |
+| tx_hash | VARCHAR(66) | UNIQUE | 체인 트랜잭션 해시 |
+| submitted_at | TIMESTAMP | NULL | 체인 제출 시각 |
+| confirmed_at | TIMESTAMP | NULL | 컨펌 완료 시각 |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+| updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
+
+**status ENUM 값:**
+
+| 상태 | 설명 |
+|------|------|
+| PENDING | 요청됨, 처리 대기 |
+| APPROVED | 승인됨 (수동 승인 필요 시) |
+| SUBMITTED | 체인에 제출됨 |
+| CONFIRMED | 체인 컨펌 완료 |
+| COMPLETED | 처리 완료 |
+| REJECTED | 거부됨 |
+| FAILED | 실패 |
+
+**출금 흐름:**
+```
+┌─────────┐  approve  ┌──────────┐  submit   ┌───────────┐  confirm  ┌───────────┐
+│ PENDING │──────────►│ APPROVED │──────────►│ SUBMITTED │──────────►│ CONFIRMED │
+└────┬────┘           └──────────┘           └───────────┘           └─────┬─────┘
+     │                                                                      │
+     │ reject                                                     complete  │
+     ▼                                                                      ▼
+┌──────────┐                                                        ┌───────────┐
+│ REJECTED │                                                        │ COMPLETED │
+└──────────┘                                                        └───────────┘
+
+* PENDING 시 accounts.balance 차감 + accounts.hold_balance 증가
+* COMPLETED 시 accounts.hold_balance 차감
+* REJECTED/FAILED 시 accounts.balance 복구 + accounts.hold_balance 차감
+```
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `UNIQUE KEY uk_tx_hash (tx_hash)` - NULL 허용 unique
+- `INDEX idx_user_status (user_id, status)`
+- `INDEX idx_status (status)`
+
+---
+
+#### 4.2.6 products (상품)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -845,7 +1097,9 @@ outbox.aggregate_type + aggregate_id:
 - `UNIQUE KEY (sku)`
 - `INDEX idx_status (status)`
 
-#### 4.2.2 inventories (재고)
+---
+
+#### 4.2.7 inventories (재고)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -869,7 +1123,7 @@ CONSTRAINT chk_reserved CHECK (reserved_quantity >= 0)
 CONSTRAINT chk_available CHECK (quantity >= reserved_quantity)
 ```
 
-#### 4.2.3 inventory_logs (재고 이력)
+#### 4.2.8 inventory_logs (재고 이력)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -891,14 +1145,14 @@ CONSTRAINT chk_available CHECK (quantity >= reserved_quantity)
 - `INDEX idx_inventory_created (inventory_id, created_at)`
 - `INDEX idx_reference (reference_type, reference_id)`
 
-#### 4.2.4 orders (주문)
+#### 4.2.9 orders (주문) - MODIFIED
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
 | id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 주문 ID |
 | order_number | VARCHAR(50) | UNIQUE, NOT NULL | 주문 번호 |
-| buyer_id | BIGINT UNSIGNED | NOT NULL | 구매자 ID |
-| seller_id | BIGINT UNSIGNED | NOT NULL | 판매자 ID |
+| buyer_id | BIGINT UNSIGNED | **FK, NOT NULL** | **users.id 참조** (구매자) |
+| seller_id | BIGINT UNSIGNED | **FK, NOT NULL** | **users.id 참조** (판매자) |
 | status | ENUM | NOT NULL | 주문 상태 |
 | total_amount | DECIMAL(18,2) | NOT NULL | 총 금액 |
 | created_at | TIMESTAMP | NOT NULL | 생성 시각 |
@@ -907,6 +1161,32 @@ CONSTRAINT chk_available CHECK (quantity >= reserved_quantity)
 **status ENUM 값:**
 - PENDING, CONFIRMED, PAID, SHIPPED, COMPLETED, CANCELLED, REFUNDED
 
+**관계 다이어그램:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     orders 관계 다이어그램                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────┐                                   ┌─────────┐     │
+│   │  users  │  ◄───────── buyer_id ────────     │  users  │     │
+│   │ (buyer) │              orders              │ (seller) │     │
+│   └─────────┘  ◄───────── seller_id ───────    └─────────┘     │
+│                     │                                            │
+│                     │ 1:N                                        │
+│                     ▼                                            │
+│              ┌─────────────┐                                    │
+│              │ order_items │                                    │
+│              └─────────────┘                                    │
+│                     │                                            │
+│                     │ N:1                                        │
+│                     ▼                                            │
+│              ┌─────────────┐                                    │
+│              │  products   │                                    │
+│              └─────────────┘                                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 **인덱스:**
 - `PRIMARY KEY (id)`
 - `UNIQUE KEY (order_number)`
@@ -914,7 +1194,7 @@ CONSTRAINT chk_available CHECK (quantity >= reserved_quantity)
 - `INDEX idx_seller_status (seller_id, status)`
 - `INDEX idx_created_at (created_at)` - 시간순 조회
 
-#### 4.2.5 order_items (주문 상품)
+#### 4.2.10 order_items (주문 상품)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -968,13 +1248,14 @@ subtotal = quantity * unit_price
 SELECT SUM(quantity * unit_price) FROM order_items WHERE order_id = ?
 ```
 
-#### 4.2.6 accounts (계정)
+#### 4.2.11 accounts (계정) - MODIFIED
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
 | id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 계정 ID |
 | account_type | ENUM | NOT NULL | USER, MERCHANT, ESCROW, SYSTEM |
-| owner_id | BIGINT UNSIGNED | | 소유자 ID |
+| owner_id | BIGINT UNSIGNED | FK, NULL | **users.id 참조** (소유자) |
+| primary_wallet_id | BIGINT UNSIGNED | FK, NULL | **wallets.id 참조** (주 지갑) |
 | external_id | VARCHAR(64) | UNIQUE | 외부 식별자 |
 | balance | DECIMAL(18,8) | NOT NULL, DEFAULT 0 | 가용 잔액 |
 | hold_balance | DECIMAL(18,8) | NOT NULL, DEFAULT 0 | 홀드 잔액 |
@@ -983,13 +1264,48 @@ SELECT SUM(quantity * unit_price) FROM order_items WHERE order_id = ?
 | created_at | TIMESTAMP | NOT NULL | 생성 시각 |
 | updated_at | TIMESTAMP | NOT NULL | 수정 시각 |
 
+**관계 변경사항:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    accounts 관계 다이어그램                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────┐  1:N   ┌──────────┐  1:1   ┌─────────┐           │
+│   │  users  │───────►│ accounts │◄───────│ wallets │           │
+│   └─────────┘        └──────────┘        └─────────┘           │
+│                        owner_id          primary_wallet_id      │
+│                                                                  │
+│   account_type별 owner_id 사용:                                 │
+│   ├── USER: owner_id = users.id (필수)                         │
+│   ├── MERCHANT: owner_id = users.id (필수)                     │
+│   ├── ESCROW: owner_id = NULL (시스템 관리)                    │
+│   └── SYSTEM: owner_id = NULL (시스템 관리)                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `UNIQUE KEY uk_external_id (external_id)`
+- `INDEX idx_owner_id (owner_id)`
+- `INDEX idx_type_status (account_type, status)`
+
 **CHECK 제약:**
 ```sql
 CONSTRAINT chk_balance CHECK (balance >= 0)
 CONSTRAINT chk_hold CHECK (hold_balance >= 0)
 ```
 
-#### 4.2.7 ledger_entries (원장)
+**계정 유형별 설명:**
+
+| account_type | owner_id | primary_wallet_id | 용도 |
+|--------------|----------|-------------------|------|
+| USER | users.id (필수) | wallets.id (선택) | 일반 사용자 계정 |
+| MERCHANT | users.id (필수) | wallets.id (선택) | 판매자 정산 계정 |
+| ESCROW | NULL | NULL | 에스크로 (결제 대기) |
+| SYSTEM | NULL | NULL | 플랫폼 수수료, 시스템 계정 |
+
+#### 4.2.12 ledger_entries (원장)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -1016,7 +1332,7 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 - `INDEX idx_tx_id (tx_id)` - tx_id별 차대변 검증
 - `INDEX idx_account_created (account_id, created_at)` - 계정별 이력 조회
 
-#### 4.2.8 payments (결제)
+#### 4.2.13 payments (결제)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -1035,7 +1351,7 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 **status ENUM 값:**
 - PENDING, AUTHORIZED, CAPTURED, VOIDED, REFUNDED, FAILED
 
-#### 4.2.9 outbox (이벤트 아웃박스)
+#### 4.2.14 outbox (이벤트 아웃박스)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -1056,7 +1372,7 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 - `INDEX idx_status_retry (status, next_retry_at)` - Worker 폴링용
 - `INDEX idx_aggregate (aggregate_type, aggregate_id)` - 집합 조회용
 
-#### 4.2.10 settlements (정산)
+#### 4.2.15 settlements (정산)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -1094,7 +1410,7 @@ CONSTRAINT chk_net_amount CHECK (net_amount = amount - fee_amount)
 CONSTRAINT chk_amounts CHECK (amount >= 0 AND fee_amount >= 0 AND net_amount >= 0)
 ```
 
-#### 4.2.11 idempotency_keys (멱등성 키)
+#### 4.2.16 idempotency_keys (멱등성 키)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -1142,7 +1458,7 @@ CONSTRAINT chk_amounts CHECK (amount >= 0 AND fee_amount >= 0 AND net_amount >= 
 - 기본 TTL: 24시간
 - 결제 관련: 7일 (분쟁 대응)
 
-#### 4.2.12 audit_logs (감사 로그)
+#### 4.2.17 audit_logs (감사 로그)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
