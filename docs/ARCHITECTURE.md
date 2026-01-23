@@ -509,8 +509,63 @@ CONSTRAINT chk_available CHECK (quantity >= reserved_quantity)
 - `UNIQUE KEY (order_number)`
 - `INDEX idx_buyer_status (buyer_id, status)`
 - `INDEX idx_seller_status (seller_id, status)`
+- `INDEX idx_created_at (created_at)` - 시간순 조회
 
-#### 4.2.5 accounts (계정)
+#### 4.2.5 order_items (주문 상품)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|------|------|------|------|
+| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | 주문 상품 ID |
+| order_id | BIGINT UNSIGNED | FK, NOT NULL | 주문 참조 |
+| product_id | BIGINT UNSIGNED | FK, NOT NULL | 상품 참조 |
+| quantity | INT UNSIGNED | NOT NULL | 주문 수량 |
+| unit_price | DECIMAL(18,2) | NOT NULL | 주문 시점 단가 (스냅샷) |
+| created_at | TIMESTAMP | NOT NULL | 생성 시각 |
+
+**관계:**
+- `orders` 테이블과 **N:1 관계** (하나의 주문에 여러 상품)
+- `products` 테이블과 **N:1 관계** (하나의 상품이 여러 주문에 포함)
+- orders ↔ products 간의 **N:M 관계를 해소하는 중간 테이블**
+
+**인덱스:**
+- `PRIMARY KEY (id)`
+- `INDEX idx_order_id (order_id)` - 주문별 상품 목록 조회
+- `INDEX idx_product_id (product_id)` - 상품별 주문 이력 조회
+
+**설계 포인트:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    unit_price 스냅샷 이유                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  products.price는 변경될 수 있음:                               │
+│    - 할인 이벤트                                                │
+│    - 가격 인상/인하                                             │
+│                                                                  │
+│  order_items.unit_price는 주문 시점 가격 고정:                  │
+│    - 주문 후 상품 가격 변경 → 주문 금액 영향 없음              │
+│    - 정산/환불 시 정확한 금액 보장                              │
+│                                                                  │
+│  예시:                                                           │
+│    T1: products.price = 10,000원                                │
+│    T2: 주문 생성 → order_items.unit_price = 10,000원 (스냅샷)   │
+│    T3: products.price = 12,000원 (가격 인상)                    │
+│    T4: 환불 요청 → order_items.unit_price 기준 = 10,000원 환불  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**계산된 필드:**
+```sql
+-- 주문 상품별 소계
+subtotal = quantity * unit_price
+
+-- 주문 총액 (orders.total_amount와 일치해야 함)
+SELECT SUM(quantity * unit_price) FROM order_items WHERE order_id = ?
+```
+
+#### 4.2.6 accounts (계정)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -531,7 +586,7 @@ CONSTRAINT chk_balance CHECK (balance >= 0)
 CONSTRAINT chk_hold CHECK (hold_balance >= 0)
 ```
 
-#### 4.2.6 ledger_entries (원장)
+#### 4.2.7 ledger_entries (원장)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -558,7 +613,7 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 - `INDEX idx_tx_id (tx_id)` - tx_id별 차대변 검증
 - `INDEX idx_account_created (account_id, created_at)` - 계정별 이력 조회
 
-#### 4.2.7 payments (결제)
+#### 4.2.8 payments (결제)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -577,7 +632,7 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 **status ENUM 값:**
 - PENDING, AUTHORIZED, CAPTURED, VOIDED, REFUNDED, FAILED
 
-#### 4.2.8 outbox (이벤트 아웃박스)
+#### 4.2.9 outbox (이벤트 아웃박스)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -598,7 +653,7 @@ CONSTRAINT chk_amount CHECK (amount > 0)
 - `INDEX idx_status_retry (status, next_retry_at)` - Worker 폴링용
 - `INDEX idx_aggregate (aggregate_type, aggregate_id)` - 집합 조회용
 
-#### 4.2.9 settlements (정산)
+#### 4.2.10 settlements (정산)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -636,7 +691,7 @@ CONSTRAINT chk_net_amount CHECK (net_amount = amount - fee_amount)
 CONSTRAINT chk_amounts CHECK (amount >= 0 AND fee_amount >= 0 AND net_amount >= 0)
 ```
 
-#### 4.2.10 idempotency_keys (멱등성 키)
+#### 4.2.11 idempotency_keys (멱등성 키)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -684,7 +739,7 @@ CONSTRAINT chk_amounts CHECK (amount >= 0 AND fee_amount >= 0 AND net_amount >= 
 - 기본 TTL: 24시간
 - 결제 관련: 7일 (분쟁 대응)
 
-#### 4.2.11 audit_logs (감사 로그)
+#### 4.2.12 audit_logs (감사 로그)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
