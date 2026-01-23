@@ -217,98 +217,501 @@ b2b-settlement-engine/
 
 ## 4. DB 설계 (ERD)
 
-### 4.1 전체 ERD
+### 4.1 전체 ERD (17 테이블)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              B2B Commerce Settlement Engine ERD                       │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│                        B2B Commerce Settlement Engine - Complete ERD                          │
+│                              (Users + Wallets + Commerce + Ledger)                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────┐       ┌──────────────────┐       ┌──────────────────┐
-│   products   │       │   inventories    │       │  inventory_logs  │
-├──────────────┤       ├──────────────────┤       ├──────────────────┤
-│ PK id        │◄──────│ FK product_id    │◄──────│ FK inventory_id  │
-│ UK sku       │       │ PK id            │       │ PK id            │
-│    name      │       │ UK (product_id,  │       │    event_type    │
-│    price     │       │    location)     │       │    quantity_change│
-│    status    │       │    quantity      │       │    quantity_after │
-│    created_at│       │    reserved_qty  │       │    reserved_after │
-│    updated_at│       │    version (OL)  │       │    reference_type │
-└──────────────┘       │    created_at    │       │    reference_id   │
-        │              │    updated_at    │       │    reason         │
-        │              └──────────────────┘       │    created_at     │
-        │                                         └──────────────────┘
-        │                                                 ▲
-        │                                                 │ (reference)
-        ▼                                                 │
-┌──────────────────┐       ┌──────────────────┐          │
-│   order_items    │       │     orders       │          │
-├──────────────────┤       ├──────────────────┤          │
-│ PK id            │       │ PK id            │          │
-│ FK order_id      │──────►│ UK order_number  │          │
-│ FK product_id    │       │    buyer_id      │          │
-│    quantity      │       │    seller_id     │          │
-│    unit_price    │       │    status (SM)   │──────────┘
-│    created_at    │       │    total_amount  │
-└──────────────────┘       │    created_at    │
-                           │    updated_at    │
-                           └────────┬─────────┘
-                                    │
-                                    ▼
-┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
-│    accounts      │       │    payments      │       │   settlements    │
-├──────────────────┤       ├──────────────────┤       ├──────────────────┤
-│ PK id            │◄──────│ FK payer_acct_id │       │ PK id            │
-│ UK external_id   │       │ FK order_id      │◄──────│ FK payment_id    │
-│    account_type  │       │ PK id            │       │ FK payee_acct_id │──┐
-│    owner_id      │       │ UK idempotency_  │       │    amount        │  │
-│    balance       │       │    key           │       │    fee_amount    │  │
-│    hold_balance  │       │    amount        │       │    net_amount    │  │
-│    version (OL)  │       │    status (SM)   │       │    status (SM)   │  │
-│    status        │       │    authorized_at │       │    settled_at    │  │
-│    created_at    │       │    captured_at   │       │    created_at    │  │
-│    updated_at    │       │    expires_at    │       │    updated_at    │  │
-└────────┬─────────┘       │    created_at    │       └──────────────────┘  │
-         │                 │    updated_at    │                             │
-         │                 └──────────────────┘                             │
-         │                         │                                        │
-         │                         │ (reference)                            │
-         ▼                         ▼                                        │
-┌──────────────────┐       ┌──────────────────┐                             │
-│  ledger_entries  │       │     outbox       │                             │
-├──────────────────┤       ├──────────────────┤                             │
-│ PK id            │       │ PK id            │◄────────────────────────────┘
-│ IDX tx_id        │       │    event_type    │
-│ FK account_id    │       │    aggregate_type│
-│    entry_type    │       │    aggregate_id  │
-│    amount        │       │    payload (JSON)│
-│    balance_after │       │    status        │
-│    reference_type│       │    retry_count   │
-│    reference_id  │       │    max_retries   │
-│    description   │       │    next_retry_at │
-│    created_at    │       │    error_message │
-└──────────────────┘       │    created_at    │
-                           │    updated_at    │
-                           └──────────────────┘
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                    USER & WALLET LAYER                                        ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
 
-┌──────────────────┐       ┌──────────────────┐
-│idempotency_keys  │       │   audit_logs     │
-├──────────────────┤       ├──────────────────┤
-│ PK id            │       │ PK id            │
-│ UK idempotency_  │       │    actor_type    │
-│    key           │       │    actor_id      │
-│    request_path  │       │    action        │
-│    request_hash  │       │    resource_type │
-│    response_stat │       │    resource_id   │
-│    response_body │       │    old_value     │
-│    created_at    │       │    new_value     │
-│    expires_at    │       │    ip_address    │
-└──────────────────┘       │    user_agent    │
-                           │    request_id    │
-                           │    created_at    │
-                           └──────────────────┘
+┌────────────────────┐                              ┌────────────────────┐
+│       users        │ ◄─────────────┐              │   system_wallets   │
+├────────────────────┤              │              ├────────────────────┤
+│ PK id              │              │              │ PK id              │
+│ UK email           │              │              │ UK wallet_type     │
+│ UK external_id     │              │              │    address         │
+│    name            │              │              │    description     │
+│    phone           │              │              │    is_active       │
+│    role (BUYER/    │              │              │    created_at      │
+│         SELLER/    │              │              │    updated_at      │
+│         BOTH)      │              │              └────────────────────┘
+│    kyc_status      │              │                 Types: MINTER,
+│    kyc_verified_at │              │                 BURNER, TREASURY,
+│    status          │              │                 HOT_WALLET,
+│    created_at      │              │                 COLD_WALLET
+│    updated_at      │              │
+└────────┬───────────┘              │
+         │                          │
+         │ 1:N                      │ 1:N (owner)
+         ▼                          │
+┌────────────────────┐              │
+│      wallets       │              │
+├────────────────────┤              │
+│ PK id              │              │
+│ FK user_id         │──────────────┘
+│ UK address         │
+│    label           │
+│    is_primary      │
+│    is_verified     │
+│    created_at      │
+│    updated_at      │
+└────────┬───────────┘
+         │
+         │ 1:1 (primary_wallet)
+         ▼
+
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                    ACCOUNT & LEDGER LAYER                                     ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────┐              ┌────────────────────┐
+│     accounts       │              │   ledger_entries   │
+├────────────────────┤              ├────────────────────┤
+│ PK id              │◄─────────────│ FK account_id      │
+│ FK owner_id (users)│              │ PK id              │
+│ FK primary_wallet_ │              │ IDX tx_id          │
+│    id (wallets)    │              │    entry_type      │
+│ UK external_id     │              │    (DEBIT/CREDIT)  │
+│    account_type    │              │    amount          │
+│    (USER/MERCHANT/ │              │    balance_after   │
+│     ESCROW/SYSTEM) │              │    reference_type  │
+│    balance         │              │    reference_id    │
+│    hold_balance    │              │    description     │
+│    version (OL)    │              │    created_at      │
+│    status          │              └────────────────────┘
+│    created_at      │                    (INSERT ONLY)
+│    updated_at      │
+└────────┬───────────┘
+         │
+         │ 1:N (payer/payee)
+         ▼
+
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                 DEPOSIT & WITHDRAWAL LAYER                                    ║
+║                              (On-chain ↔ Off-chain Bridge)                                   ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────┐              ┌────────────────────┐
+│     deposits       │              │    withdrawals     │
+├────────────────────┤              ├────────────────────┤
+│ PK id              │              │ PK id              │
+│ FK user_id (users) │              │ FK user_id (users) │
+│ FK account_id      │              │ FK account_id      │
+│    (accounts)      │              │    (accounts)      │
+│ UK tx_hash         │              │    to_address      │
+│    from_address    │              │    amount          │
+│    amount          │              │    fee_amount      │
+│    block_number    │              │    status          │
+│    status          │              │ UK tx_hash (체인)  │
+│    confirmed_at    │              │    submitted_at    │
+│    created_at      │              │    confirmed_at    │
+│    updated_at      │              │    created_at      │
+└────────────────────┘              │    updated_at      │
+                                    └────────────────────┘
+Flow:                               Flow:
+On-chain → Treasury                 User Account →
+(DETECTED → CONFIRMING              On-chain 전송
+ → CREDITED → COMPLETED)            (PENDING → SUBMITTED
+                                     → CONFIRMED → COMPLETED)
+
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                    COMMERCE LAYER                                             ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────┐       ┌────────────────────┐       ┌────────────────────┐
+│     products       │       │    inventories     │       │  inventory_logs    │
+├────────────────────┤       ├────────────────────┤       ├────────────────────┤
+│ PK id              │◄──────│ FK product_id      │◄──────│ FK inventory_id    │
+│ UK sku             │       │ PK id              │       │ PK id              │
+│    name            │       │ UK (product_id,    │       │    event_type      │
+│    price           │       │     location)      │       │    quantity_change │
+│    status          │       │    quantity        │       │    quantity_after  │
+│    created_at      │       │    reserved_qty    │       │    reserved_after  │
+│    updated_at      │       │    version (OL)    │       │    reference_type  │
+└────────────────────┘       │    created_at      │       │    reference_id    │
+         │                   │    updated_at      │       │    reason          │
+         │ 1:N               └────────────────────┘       │    created_at      │
+         ▼                                                └────────────────────┘
+┌────────────────────┐                                          (INSERT ONLY)
+│   order_items      │       ┌────────────────────┐
+├────────────────────┤       │      orders        │
+│ PK id              │       ├────────────────────┤
+│ FK order_id        │──────►│ PK id              │
+│ FK product_id      │       │ UK order_number    │
+│    quantity        │       │ FK buyer_id (users)│
+│    unit_price      │       │ FK seller_id(users)│
+│    created_at      │       │    status (SM)     │
+└────────────────────┘       │    total_amount    │
+                             │    created_at      │
+                             │    updated_at      │
+                             └────────┬───────────┘
+                                      │
+                                      │ 1:N
+                                      ▼
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                   PAYMENT & SETTLEMENT LAYER                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────┐              ┌────────────────────┐
+│     payments       │              │   settlements      │
+├────────────────────┤              ├────────────────────┤
+│ PK id              │◄─────────────│ FK payment_id      │
+│ FK order_id        │              │ PK id              │
+│ FK payer_account_  │              │ FK payee_account_  │
+│    id (accounts)   │              │    id (accounts)   │
+│ UK idempotency_key │              │    amount          │
+│    amount          │              │    fee_amount      │
+│    status (SM)     │              │    net_amount      │
+│    authorized_at   │              │    status (SM)     │
+│    captured_at     │              │    settled_at      │
+│    expires_at      │              │    created_at      │
+│    created_at      │              │    updated_at      │
+│    updated_at      │              └────────────────────┘
+└────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                   INFRASTRUCTURE LAYER                                        ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────┐   ┌────────────────────┐   ┌────────────────────┐
+│      outbox        │   │  idempotency_keys  │   │    audit_logs      │
+├────────────────────┤   ├────────────────────┤   ├────────────────────┤
+│ PK id              │   │ PK id              │   │ PK id              │
+│    event_type      │   │ UK idempotency_key │   │    actor_type      │
+│    aggregate_type  │   │    request_path    │   │    actor_id        │
+│    aggregate_id    │   │    request_hash    │   │    action          │
+│    payload (JSON)  │   │    response_status │   │    resource_type   │
+│    status (SM)     │   │    response_body   │   │    resource_id     │
+│    retry_count     │   │    created_at      │   │    old_value (JSON)│
+│    max_retries     │   │    expires_at      │   │    new_value (JSON)│
+│    next_retry_at   │   └────────────────────┘   │    ip_address      │
+│    error_message   │                            │    user_agent      │
+│    created_at      │                            │    request_id      │
+│    updated_at      │                            │    created_at      │
+└────────────────────┘                            └────────────────────┘
+                                                        (INSERT ONLY)
+```
+
+### 4.1.1 전체 관계도 (상세)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              Complete Entity Relationship Diagram                            │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                              │
+│                                    ┌──────────┐                                             │
+│                          ┌─────────│  users   │──────────┐                                  │
+│                          │         └────┬─────┘          │                                  │
+│                          │              │                │                                  │
+│                          │ 1:N          │ 1:N            │ 1:N                              │
+│                          ▼              ▼                ▼                                  │
+│                    ┌──────────┐   ┌──────────┐    ┌──────────┐                             │
+│                    │ wallets  │   │ accounts │    │  orders  │                             │
+│                    └────┬─────┘   └────┬─────┘    └────┬─────┘                             │
+│                         │              │               │                                    │
+│              ┌──────────┘              │               │                                    │
+│              │                         │               │                                    │
+│              │ 1:1 (primary)           │               │                                    │
+│              ▼                         │               │                                    │
+│        ┌──────────┐                    │               │                                    │
+│        │ accounts │◄───────────────────┘               │                                    │
+│        │ (FK:     │                                    │                                    │
+│        │ primary_ │                                    │                                    │
+│        │ wallet_id│                                    │                                    │
+│        └────┬─────┘                                    │                                    │
+│             │                                          │                                    │
+│             │ 1:N                                      │                                    │
+│             ▼                                          │                                    │
+│       ┌───────────────┐                                │                                    │
+│       │ledger_entries │                                │                                    │
+│       └───────────────┘                                │                                    │
+│                                                        │                                    │
+│    ┌───────────────────────────────────────────────────┼─────────────────────┐             │
+│    │                                                   │                     │             │
+│    │ users.id = buyer_id                               │        users.id = seller_id       │
+│    │                                                   │                     │             │
+│    │                                                   ▼                     │             │
+│    │                                            ┌──────────┐                 │             │
+│    │                                            │  orders  │◄────────────────┘             │
+│    │                                            └────┬─────┘                               │
+│    │                                                 │                                      │
+│    │                                    ┌────────────┼────────────┐                        │
+│    │                                    │ 1:N       │ 1:N        │ 1:N                    │
+│    │                                    ▼           ▼            ▼                        │
+│    │                             ┌───────────┐ ┌──────────┐ ┌──────────┐                  │
+│    │                             │order_items│ │ payments │ │inventory │                  │
+│    │                             └─────┬─────┘ └────┬─────┘ │ (ref)    │                  │
+│    │                                   │            │       └──────────┘                  │
+│    │                                   │            │                                      │
+│    │                                   │ N:1        │ 1:1                                  │
+│    │                                   ▼            ▼                                      │
+│    │                             ┌──────────┐ ┌───────────┐                               │
+│    │                             │ products │ │settlements│                               │
+│    │                             └────┬─────┘ └───────────┘                               │
+│    │                                  │                                                    │
+│    │                                  │ 1:N                                                │
+│    │                                  ▼                                                    │
+│    │                            ┌───────────┐                                             │
+│    │                            │inventories│                                             │
+│    │                            └─────┬─────┘                                             │
+│    │                                  │                                                    │
+│    │                                  │ 1:N                                                │
+│    │                                  ▼                                                    │
+│    │                           ┌─────────────┐                                            │
+│    │                           │inventory_   │                                            │
+│    │                           │logs         │                                            │
+│    │                           └─────────────┘                                            │
+│    │                                                                                       │
+│    │                                                                                       │
+│    │  ┌──────────────────────────────────────────────────────────────────────────────┐   │
+│    │  │                         On-chain / Off-chain Bridge                           │   │
+│    │  │                                                                               │   │
+│    │  │   ┌──────────┐         ┌───────────────┐         ┌─────────────┐             │   │
+│    │  │   │ deposits │──────►  │   accounts    │  ◄──────│ withdrawals │             │   │
+│    │  │   └──────────┘         └───────────────┘         └─────────────┘             │   │
+│    │  │       ▲                       ▲                         │                     │   │
+│    │  │       │                       │                         │                     │   │
+│    │  │       │               ┌───────────────┐                 │                     │   │
+│    │  │       └───────────────│system_wallets │◄────────────────┘                     │   │
+│    │  │                       │(TREASURY)     │                                       │   │
+│    │  │                       └───────────────┘                                       │   │
+│    │  │                                                                               │   │
+│    │  │   Flow: User sends → Treasury (on-chain) → deposits → accounts (off-chain)   │   │
+│    │  │   Flow: accounts (off-chain) → withdrawals → User wallet (on-chain)          │   │
+│    │  └──────────────────────────────────────────────────────────────────────────────┘   │
+│    │                                                                                       │
+│    └───────────────────────────────────────────────────────────────────────────────────────┘
+│                                                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.1.2 테이블 관계표 (17 테이블)
+
+| # | 테이블 | 관계 | 대상 테이블 | 카디널리티 | FK 컬럼 | 설명 |
+|---|--------|------|-------------|------------|---------|------|
+| 1 | **users** | → | wallets | 1:N | wallets.user_id | 사용자는 여러 지갑 보유 가능 |
+| 2 | **users** | → | accounts | 1:N | accounts.owner_id | 사용자는 여러 계정 보유 가능 |
+| 3 | **users** | → | orders (buyer) | 1:N | orders.buyer_id | 구매자로서 여러 주문 |
+| 4 | **users** | → | orders (seller) | 1:N | orders.seller_id | 판매자로서 여러 주문 |
+| 5 | **users** | → | deposits | 1:N | deposits.user_id | 여러 입금 내역 |
+| 6 | **users** | → | withdrawals | 1:N | withdrawals.user_id | 여러 출금 요청 |
+| 7 | **wallets** | → | accounts | 1:1 | accounts.primary_wallet_id | 계정의 주 지갑 |
+| 8 | **accounts** | → | ledger_entries | 1:N | ledger_entries.account_id | 여러 원장 기록 |
+| 9 | **accounts** | → | payments (payer) | 1:N | payments.payer_account_id | 지불자로서 여러 결제 |
+| 10 | **accounts** | → | settlements (payee) | 1:N | settlements.payee_account_id | 수취자로서 여러 정산 |
+| 11 | **accounts** | → | deposits | 1:N | deposits.account_id | 입금 대상 계정 |
+| 12 | **accounts** | → | withdrawals | 1:N | withdrawals.account_id | 출금 원본 계정 |
+| 13 | **products** | → | inventories | 1:N | inventories.product_id | 여러 위치에 재고 |
+| 14 | **products** | → | order_items | 1:N | order_items.product_id | 여러 주문에 포함 |
+| 15 | **inventories** | → | inventory_logs | 1:N | inventory_logs.inventory_id | 여러 변동 이력 |
+| 16 | **orders** | → | order_items | 1:N | order_items.order_id | 여러 상품 포함 |
+| 17 | **orders** | → | payments | 1:N | payments.order_id | 여러 결제 시도 가능 |
+| 18 | **payments** | → | settlements | 1:1 | settlements.payment_id | 하나의 정산 |
+
+### 4.1.3 레이어별 테이블 분류
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Table Classification by Layer                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ╔═══════════════════════════════════════════════════════════════════════╗  │
+│  ║  Layer 1: Identity & Wallet (신원/지갑)                                ║  │
+│  ╠═══════════════════════════════════════════════════════════════════════╣  │
+│  ║  • users           - 사용자 정보, KYC                                  ║  │
+│  ║  • wallets         - 사용자 EVM 지갑 (on-chain 주소)                   ║  │
+│  ║  • system_wallets  - 시스템 지갑 (TREASURY, HOT, COLD 등)             ║  │
+│  ╚═══════════════════════════════════════════════════════════════════════╝  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ╔═══════════════════════════════════════════════════════════════════════╗  │
+│  ║  Layer 2: Account & Ledger (계정/원장)                                 ║  │
+│  ╠═══════════════════════════════════════════════════════════════════════╣  │
+│  ║  • accounts        - 내부 계정 (잔액 관리, off-chain)                  ║  │
+│  ║  • ledger_entries  - 복식부기 원장 (불변, INSERT ONLY)                ║  │
+│  ╚═══════════════════════════════════════════════════════════════════════╝  │
+│                                    │                                         │
+│                          ┌─────────┴─────────┐                              │
+│                          ▼                   ▼                              │
+│  ╔════════════════════════════╗  ╔════════════════════════════════════════╗ │
+│  ║  Layer 3a: Bridge          ║  ║  Layer 3b: Commerce                    ║ │
+│  ║  (On/Off-chain 연결)       ║  ║  (커머스)                              ║ │
+│  ╠════════════════════════════╣  ╠════════════════════════════════════════╣ │
+│  ║  • deposits                ║  ║  • products                            ║ │
+│  ║    (체인→내부)             ║  ║  • inventories                         ║ │
+│  ║  • withdrawals             ║  ║  • inventory_logs                      ║ │
+│  ║    (내부→체인)             ║  ║  • orders                              ║ │
+│  ╚════════════════════════════╝  ║  • order_items                         ║ │
+│                                   ╚════════════════════════════════════════╝ │
+│                                                    │                         │
+│                                                    ▼                         │
+│  ╔═══════════════════════════════════════════════════════════════════════╗  │
+│  ║  Layer 4: Payment & Settlement (결제/정산)                             ║  │
+│  ╠═══════════════════════════════════════════════════════════════════════╣  │
+│  ║  • payments        - 결제 (Authorize/Capture 흐름)                    ║  │
+│  ║  • settlements     - 정산 (판매자 정산)                               ║  │
+│  ╚═══════════════════════════════════════════════════════════════════════╝  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ╔═══════════════════════════════════════════════════════════════════════╗  │
+│  ║  Layer 5: Infrastructure (인프라)                                      ║  │
+│  ╠═══════════════════════════════════════════════════════════════════════╣  │
+│  ║  • outbox           - Transactional Outbox (이벤트 발행)              ║  │
+│  ║  • idempotency_keys - 멱등성 보장                                     ║  │
+│  ║  • audit_logs       - 감사 로그 (불변, INSERT ONLY)                   ║  │
+│  ╚═══════════════════════════════════════════════════════════════════════╝  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.1.4 Cardinality 관계 상세
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Detailed Cardinality Diagram                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌────────────┐                                                            │
+│   │   users    │                                                            │
+│   └──────┬─────┘                                                            │
+│          │                                                                   │
+│    ┌─────┼─────────┬─────────────┬──────────────┬──────────────┐           │
+│    │     │         │             │              │              │           │
+│   1:N   1:N       1:N           1:N            1:N            1:N          │
+│    │     │         │             │              │              │           │
+│    ▼     ▼         ▼             ▼              ▼              ▼           │
+│ wallets accounts orders      orders       deposits     withdrawals         │
+│          │      (buyer)     (seller)                                       │
+│          │                                                                  │
+│         1:N                                                                 │
+│          │                                                                  │
+│          ▼                                                                  │
+│   ledger_entries                                                           │
+│                                                                             │
+│                                                                             │
+│   ┌────────────┐                                                            │
+│   │  products  │                                                            │
+│   └──────┬─────┘                                                            │
+│          │                                                                   │
+│    ┌─────┴─────┐                                                            │
+│   1:N         1:N                                                           │
+│    │           │                                                            │
+│    ▼           ▼                                                            │
+│ inventories order_items ◄─── N:1 ──── orders                               │
+│    │                                    │                                   │
+│   1:N                              ┌────┴────┐                              │
+│    │                              1:N       1:N                             │
+│    ▼                               │         │                              │
+│ inventory_logs                     ▼         ▼                              │
+│                               payments   inventory                          │
+│                                   │      (reference)                        │
+│                                  1:1                                        │
+│                                   │                                         │
+│                                   ▼                                         │
+│                              settlements                                    │
+│                                                                             │
+│                                                                             │
+│  ★ 다형성 관계 (Polymorphic References)                                    │
+│                                                                             │
+│   inventory_logs.reference_type + reference_id:                            │
+│     ├── 'ORDER'      → orders.id                                           │
+│     ├── 'ADJUSTMENT' → 수동 조정 ID                                        │
+│     └── 'TRANSFER'   → 이동 ID                                             │
+│                                                                             │
+│   ledger_entries.reference_type + reference_id:                            │
+│     ├── 'PAYMENT'    → payments.id                                         │
+│     ├── 'SETTLEMENT' → settlements.id                                      │
+│     ├── 'DEPOSIT'    → deposits.id                                         │
+│     └── 'WITHDRAWAL' → withdrawals.id                                      │
+│                                                                             │
+│   outbox.aggregate_type + aggregate_id:                                    │
+│     ├── 'order'      → orders.id                                           │
+│     ├── 'payment'    → payments.id                                         │
+│     ├── 'deposit'    → deposits.id                                         │
+│     └── 'withdrawal' → withdrawals.id                                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.1.5 데이터 흐름 시각화
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Data Flow Overview                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────── DEPOSIT FLOW ─────────────────────────────┐  │
+│  │                                                                        │  │
+│  │    [User Wallet]                                                       │  │
+│  │         │                                                              │  │
+│  │         │ ① KRWS 전송 (on-chain)                                      │  │
+│  │         ▼                                                              │  │
+│  │    [Treasury Wallet] ──────► [deposits] ──────► [accounts]            │  │
+│  │    (system_wallets)          (DETECTED→        (balance +)            │  │
+│  │                               CREDITED)                                │  │
+│  │                                    │                                   │  │
+│  │                                    ▼                                   │  │
+│  │                            [ledger_entries]                           │  │
+│  │                            (CREDIT 기록)                              │  │
+│  │                                                                        │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌──────────────────────────── ORDER FLOW ───────────────────────────────┐  │
+│  │                                                                        │  │
+│  │    [Buyer]                                                             │  │
+│  │       │                                                                │  │
+│  │       │ ① 주문 생성                                                   │  │
+│  │       ▼                                                                │  │
+│  │    [orders] + [order_items]                                           │  │
+│  │       │                                                                │  │
+│  │       │ ② 재고 예약                                                   │  │
+│  │       ▼                                                                │  │
+│  │    [inventories] ──────► [inventory_logs]                             │  │
+│  │    (reserved_qty +)      (RESERVE 기록)                               │  │
+│  │       │                                                                │  │
+│  │       │ ③ 결제                                                        │  │
+│  │       ▼                                                                │  │
+│  │    [payments] ──────► [accounts] ──────► [ledger_entries]            │  │
+│  │    (AUTHORIZED)      (hold_balance +)   (DEBIT/CREDIT)               │  │
+│  │       │                                                                │  │
+│  │       │ ④ 배송 & 완료                                                 │  │
+│  │       ▼                                                                │  │
+│  │    [settlements] ──────► [accounts] ──────► [ledger_entries]         │  │
+│  │    (COMPLETED)          (Seller +)         (정산 기록)               │  │
+│  │                                                                        │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌────────────────────────── WITHDRAWAL FLOW ────────────────────────────┐  │
+│  │                                                                        │  │
+│  │    [User Account]                                                      │  │
+│  │         │                                                              │  │
+│  │         │ ① 출금 요청                                                 │  │
+│  │         ▼                                                              │  │
+│  │    [withdrawals] ──────► [accounts] ──────► [ledger_entries]         │  │
+│  │    (PENDING)            (balance -)        (DEBIT 기록)              │  │
+│  │         │                                                              │  │
+│  │         │ ② 체인 전송                                                 │  │
+│  │         ▼                                                              │  │
+│  │    [Hot Wallet]                                                        │  │
+│  │    (system_wallets)                                                   │  │
+│  │         │                                                              │  │
+│  │         │ ③ KRWS 전송 (on-chain)                                      │  │
+│  │         ▼                                                              │  │
+│  │    [User Wallet]                                                       │  │
+│  │    (wallets.address)                                                  │  │
+│  │                                                                        │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 범례:
+```
   PK  = Primary Key
   FK  = Foreign Key
   UK  = Unique Key
