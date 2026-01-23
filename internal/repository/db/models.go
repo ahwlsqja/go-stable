@@ -99,6 +99,51 @@ func (ns NullAccountsStatus) Value() (driver.Value, error) {
 	return string(ns.AccountsStatus), nil
 }
 
+type DepositsStatus string
+
+const (
+	DepositsStatusDETECTED   DepositsStatus = "DETECTED"
+	DepositsStatusCONFIRMING DepositsStatus = "CONFIRMING"
+	DepositsStatusCREDITED   DepositsStatus = "CREDITED"
+	DepositsStatusCOMPLETED  DepositsStatus = "COMPLETED"
+	DepositsStatusFAILED     DepositsStatus = "FAILED"
+)
+
+func (e *DepositsStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DepositsStatus(s)
+	case string:
+		*e = DepositsStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DepositsStatus: %T", src)
+	}
+	return nil
+}
+
+type NullDepositsStatus struct {
+	DepositsStatus DepositsStatus `json:"deposits_status"`
+	Valid          bool           `json:"valid"` // Valid is true if DepositsStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDepositsStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.DepositsStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DepositsStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDepositsStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DepositsStatus), nil
+}
+
 type InventoryLogsEventType string
 
 const (
@@ -410,17 +455,241 @@ func (ns NullSettlementsStatus) Value() (driver.Value, error) {
 	return string(ns.SettlementsStatus), nil
 }
 
+type SystemWalletsWalletType string
+
+const (
+	SystemWalletsWalletTypeTREASURY   SystemWalletsWalletType = "TREASURY"
+	SystemWalletsWalletTypeMINTER     SystemWalletsWalletType = "MINTER"
+	SystemWalletsWalletTypeBURNER     SystemWalletsWalletType = "BURNER"
+	SystemWalletsWalletTypeHOTWALLET  SystemWalletsWalletType = "HOT_WALLET"
+	SystemWalletsWalletTypeCOLDWALLET SystemWalletsWalletType = "COLD_WALLET"
+)
+
+func (e *SystemWalletsWalletType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SystemWalletsWalletType(s)
+	case string:
+		*e = SystemWalletsWalletType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SystemWalletsWalletType: %T", src)
+	}
+	return nil
+}
+
+type NullSystemWalletsWalletType struct {
+	SystemWalletsWalletType SystemWalletsWalletType `json:"system_wallets_wallet_type"`
+	Valid                   bool                    `json:"valid"` // Valid is true if SystemWalletsWalletType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSystemWalletsWalletType) Scan(value interface{}) error {
+	if value == nil {
+		ns.SystemWalletsWalletType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SystemWalletsWalletType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSystemWalletsWalletType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SystemWalletsWalletType), nil
+}
+
+type UsersKycStatus string
+
+const (
+	UsersKycStatusNONE     UsersKycStatus = "NONE"
+	UsersKycStatusPENDING  UsersKycStatus = "PENDING"
+	UsersKycStatusVERIFIED UsersKycStatus = "VERIFIED"
+	UsersKycStatusREJECTED UsersKycStatus = "REJECTED"
+)
+
+func (e *UsersKycStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsersKycStatus(s)
+	case string:
+		*e = UsersKycStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsersKycStatus: %T", src)
+	}
+	return nil
+}
+
+type NullUsersKycStatus struct {
+	UsersKycStatus UsersKycStatus `json:"users_kyc_status"`
+	Valid          bool           `json:"valid"` // Valid is true if UsersKycStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsersKycStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsersKycStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsersKycStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsersKycStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsersKycStatus), nil
+}
+
+type UsersRole string
+
+const (
+	UsersRoleBUYER  UsersRole = "BUYER"
+	UsersRoleSELLER UsersRole = "SELLER"
+	UsersRoleBOTH   UsersRole = "BOTH"
+	UsersRoleADMIN  UsersRole = "ADMIN"
+)
+
+func (e *UsersRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsersRole(s)
+	case string:
+		*e = UsersRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsersRole: %T", src)
+	}
+	return nil
+}
+
+type NullUsersRole struct {
+	UsersRole UsersRole `json:"users_role"`
+	Valid     bool      `json:"valid"` // Valid is true if UsersRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsersRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsersRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsersRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsersRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsersRole), nil
+}
+
+type UsersStatus string
+
+const (
+	UsersStatusACTIVE    UsersStatus = "ACTIVE"
+	UsersStatusSUSPENDED UsersStatus = "SUSPENDED"
+	UsersStatusDELETED   UsersStatus = "DELETED"
+)
+
+func (e *UsersStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsersStatus(s)
+	case string:
+		*e = UsersStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsersStatus: %T", src)
+	}
+	return nil
+}
+
+type NullUsersStatus struct {
+	UsersStatus UsersStatus `json:"users_status"`
+	Valid       bool        `json:"valid"` // Valid is true if UsersStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsersStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsersStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsersStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsersStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsersStatus), nil
+}
+
+type WithdrawalsStatus string
+
+const (
+	WithdrawalsStatusPENDING   WithdrawalsStatus = "PENDING"
+	WithdrawalsStatusAPPROVED  WithdrawalsStatus = "APPROVED"
+	WithdrawalsStatusSUBMITTED WithdrawalsStatus = "SUBMITTED"
+	WithdrawalsStatusCONFIRMED WithdrawalsStatus = "CONFIRMED"
+	WithdrawalsStatusCOMPLETED WithdrawalsStatus = "COMPLETED"
+	WithdrawalsStatusREJECTED  WithdrawalsStatus = "REJECTED"
+	WithdrawalsStatusFAILED    WithdrawalsStatus = "FAILED"
+)
+
+func (e *WithdrawalsStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WithdrawalsStatus(s)
+	case string:
+		*e = WithdrawalsStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WithdrawalsStatus: %T", src)
+	}
+	return nil
+}
+
+type NullWithdrawalsStatus struct {
+	WithdrawalsStatus WithdrawalsStatus `json:"withdrawals_status"`
+	Valid             bool              `json:"valid"` // Valid is true if WithdrawalsStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWithdrawalsStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.WithdrawalsStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WithdrawalsStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWithdrawalsStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WithdrawalsStatus), nil
+}
+
 type Account struct {
-	ID          uint64              `json:"id"`
-	AccountType AccountsAccountType `json:"account_type"`
-	OwnerID     sql.NullInt64       `json:"owner_id"`
-	ExternalID  sql.NullString      `json:"external_id"`
-	Balance     string              `json:"balance"`
-	HoldBalance string              `json:"hold_balance"`
-	Version     uint32              `json:"version"`
-	Status      AccountsStatus      `json:"status"`
-	CreatedAt   time.Time           `json:"created_at"`
-	UpdatedAt   time.Time           `json:"updated_at"`
+	ID              uint64              `json:"id"`
+	AccountType     AccountsAccountType `json:"account_type"`
+	OwnerID         sql.NullInt64       `json:"owner_id"`
+	PrimaryWalletID sql.NullInt64       `json:"primary_wallet_id"`
+	ExternalID      sql.NullString      `json:"external_id"`
+	Balance         string              `json:"balance"`
+	HoldBalance     string              `json:"hold_balance"`
+	Version         uint32              `json:"version"`
+	Status          AccountsStatus      `json:"status"`
+	CreatedAt       time.Time           `json:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at"`
 }
 
 type AuditLog struct {
@@ -436,6 +705,20 @@ type AuditLog struct {
 	UserAgent    sql.NullString  `json:"user_agent"`
 	RequestID    sql.NullString  `json:"request_id"`
 	CreatedAt    time.Time       `json:"created_at"`
+}
+
+type Deposit struct {
+	ID          uint64         `json:"id"`
+	UserID      uint64         `json:"user_id"`
+	AccountID   uint64         `json:"account_id"`
+	TxHash      string         `json:"tx_hash"`
+	FromAddress string         `json:"from_address"`
+	Amount      string         `json:"amount"`
+	BlockNumber sql.NullInt64  `json:"block_number"`
+	Status      DepositsStatus `json:"status"`
+	ConfirmedAt sql.NullTime   `json:"confirmed_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type IdempotencyKey struct {
@@ -556,4 +839,54 @@ type Settlement struct {
 	SettledAt      sql.NullTime      `json:"settled_at"`
 	CreatedAt      time.Time         `json:"created_at"`
 	UpdatedAt      time.Time         `json:"updated_at"`
+}
+
+type SystemWallet struct {
+	ID          uint64                  `json:"id"`
+	WalletType  SystemWalletsWalletType `json:"wallet_type"`
+	Address     string                  `json:"address"`
+	Description sql.NullString          `json:"description"`
+	IsActive    bool                    `json:"is_active"`
+	CreatedAt   time.Time               `json:"created_at"`
+	UpdatedAt   time.Time               `json:"updated_at"`
+}
+
+type User struct {
+	ID            uint64         `json:"id"`
+	Email         string         `json:"email"`
+	ExternalID    sql.NullString `json:"external_id"`
+	Name          string         `json:"name"`
+	Phone         sql.NullString `json:"phone"`
+	Role          UsersRole      `json:"role"`
+	KycStatus     UsersKycStatus `json:"kyc_status"`
+	KycVerifiedAt sql.NullTime   `json:"kyc_verified_at"`
+	Status        UsersStatus    `json:"status"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+}
+
+type Wallet struct {
+	ID         uint64         `json:"id"`
+	UserID     uint64         `json:"user_id"`
+	Address    string         `json:"address"`
+	Label      sql.NullString `json:"label"`
+	IsPrimary  bool           `json:"is_primary"`
+	IsVerified bool           `json:"is_verified"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+}
+
+type Withdrawal struct {
+	ID          uint64            `json:"id"`
+	UserID      uint64            `json:"user_id"`
+	AccountID   uint64            `json:"account_id"`
+	ToAddress   string            `json:"to_address"`
+	Amount      string            `json:"amount"`
+	FeeAmount   string            `json:"fee_amount"`
+	Status      WithdrawalsStatus `json:"status"`
+	TxHash      sql.NullString    `json:"tx_hash"`
+	SubmittedAt sql.NullTime      `json:"submitted_at"`
+	ConfirmedAt sql.NullTime      `json:"confirmed_at"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }

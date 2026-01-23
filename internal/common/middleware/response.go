@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/ahwlsqja/go-stable/internal/common/errors"
+	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/common/errors"
 	"github.com/gin-gonic/gin"
 )
 

@@ -1,9 +1,0 @@
-DROP TABLE IF EXISTS idempotency_keys;
-DROP TABLE IF EXISTS audit_logs;
-DROP TABLE IF EXISTS outbox_jobs;
-DROP TABLE IF EXISTS redeems;
-DROP TABLE IF EXISTS payments;
-DROP TABLE IF EXISTS deposits;
-DROP TABLE IF EXISTS ledger_entries;
-DROP TABLE IF EXISTS balances;
-DROP TABLE IF EXISTS accounts;
