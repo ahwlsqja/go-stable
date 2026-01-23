@@ -315,7 +315,113 @@ b2b-settlement-engine/
   OL  = Optimistic Lock (version 컬럼)
   SM  = State Machine (status ENUM)
   IDX = Index
+
+  관계 표기:
+  ──────►  1:N (One-to-Many)
+  ──────   1:1 (One-to-One)
+  ◄──────► N:M (Many-to-Many, 중간 테이블 필요)
 ```
+
+### 4.1.1 테이블 관계 (Cardinality)
+
+#### 관계 다이어그램
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Entity Relationship Diagram                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────┐  1:N   ┌─────────────┐  1:N   ┌────────────────┐            │
+│   │ products │───────►│ inventories │───────►│ inventory_logs │            │
+│   └────┬─────┘        └─────────────┘        └────────────────┘            │
+│        │                                                                     │
+│        │ 1:N                                                                 │
+│        ▼                                                                     │
+│   ┌─────────────┐  N:1   ┌────────┐  1:N   ┌──────────┐                    │
+│   │ order_items │───────►│ orders │───────►│ payments │                    │
+│   └─────────────┘        └────────┘        └────┬─────┘                    │
+│                                                  │                          │
+│                                                  │ 1:1                      │
+│                                                  ▼                          │
+│   ┌──────────┐  1:N   ┌────────────────┐  1:1   ┌─────────────┐            │
+│   │ accounts │───────►│ ledger_entries │       │ settlements │            │
+│   └────┬─────┘        └────────────────┘       └─────────────┘            │
+│        │                                                                     │
+│        │ 1:N (payer/payee)                                                  │
+│        ▼                                                                     │
+│   ┌──────────┐                                                              │
+│   │ payments │ (accounts는 payer로서 여러 payments 가능)                    │
+│   └──────────┘                                                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 관계 상세표
+
+| 관계 | 부모 테이블 | 자식 테이블 | 카디널리티 | FK 컬럼 | 설명 |
+|------|------------|------------|-----------|---------|------|
+| **상품 → 재고** | products | inventories | **1:N** | product_id | 하나의 상품이 여러 위치에 재고 보유 가능 |
+| **재고 → 이력** | inventories | inventory_logs | **1:N** | inventory_id | 하나의 재고에 여러 변동 이력 |
+| **주문 → 주문상품** | orders | order_items | **1:N** | order_id | 하나의 주문에 여러 상품 포함 |
+| **상품 → 주문상품** | products | order_items | **1:N** | product_id | 하나의 상품이 여러 주문에 포함 가능 |
+| **주문 → 결제** | orders | payments | **1:N** | order_id | 하나의 주문에 여러 결제 시도 가능 (재시도, 부분결제) |
+| **결제 → 정산** | payments | settlements | **1:1** | payment_id | 하나의 결제에 하나의 정산 |
+| **계정 → 결제(지불자)** | accounts | payments | **1:N** | payer_account_id | 하나의 계정이 여러 결제의 지불자 |
+| **계정 → 정산(수취자)** | accounts | settlements | **1:N** | payee_account_id | 하나의 계정이 여러 정산의 수취자 |
+| **계정 → 원장** | accounts | ledger_entries | **1:N** | account_id | 하나의 계정에 여러 원장 기록 |
+
+#### 특수 관계 설명
+
+**1. orders ↔ order_items ↔ products (N:M 관계)**
+
+```
+orders와 products는 order_items를 통한 N:M 관계
+- 하나의 주문에 여러 상품 포함
+- 하나의 상품이 여러 주문에 포함
+
+┌────────┐       ┌─────────────┐       ┌──────────┐
+│ orders │ 1───N │ order_items │ N───1 │ products │
+└────────┘       └─────────────┘       └──────────┘
+```
+
+**2. accounts의 다중 역할**
+
+```
+accounts는 여러 테이블에서 다른 역할로 참조됨:
+
+accounts ──1:N──► payments (payer_account_id)     # 결제자
+accounts ──1:N──► settlements (payee_account_id) # 수취자
+accounts ──1:N──► ledger_entries (account_id)    # 원장 주체
+```
+
+**3. 자기참조 및 다형성 관계 (Polymorphic)**
+
+```
+inventory_logs.reference_type + reference_id:
+  - reference_type='ORDER', reference_id=123 → orders.id=123
+  - reference_type='ADJUSTMENT', reference_id=456 → 수동 조정 ID
+
+ledger_entries.reference_type + reference_id:
+  - reference_type='PAYMENT', reference_id=123 → payments.id=123
+  - reference_type='SETTLEMENT', reference_id=456 → settlements.id=456
+
+outbox.aggregate_type + aggregate_id:
+  - aggregate_type='order', aggregate_id=123 → orders.id=123
+  - aggregate_type='payment', aggregate_id=456 → payments.id=456
+```
+
+**4. 관계별 삭제 정책**
+
+| 부모 삭제 시 | 자식 테이블 | 정책 | 이유 |
+|-------------|------------|------|------|
+| products 삭제 | inventories | **RESTRICT** | 재고 있으면 삭제 불가 |
+| inventories 삭제 | inventory_logs | **RESTRICT** | 이력 있으면 삭제 불가 |
+| orders 삭제 | order_items | **CASCADE** | 주문과 함께 삭제 |
+| orders 삭제 | payments | **RESTRICT** | 결제 있으면 삭제 불가 |
+| payments 삭제 | settlements | **RESTRICT** | 정산 있으면 삭제 불가 |
+| accounts 삭제 | ledger_entries | **RESTRICT** | 원장 있으면 삭제 불가 |
+
+> **참고**: 금융 시스템에서는 대부분 **Soft Delete** (status='DELETED') 사용 권장
 
 ### 4.2 테이블 상세 명세
 
