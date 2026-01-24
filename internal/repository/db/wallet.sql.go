@@ -41,14 +41,15 @@ func (q *Queries) CountWalletsByUser(ctx context.Context, userID uint64) (int64,
 
 const createWallet = `-- name: CreateWallet :execresult
 
-INSERT INTO wallets (user_id, address, label, is_primary, is_verified)
-VALUES (?, ?, ?, false, false)
+INSERT INTO wallets (external_id, user_id, address, label, is_primary, is_verified)
+VALUES (?, ?, ?, ?, false, false)
 `
 
 type CreateWalletParams struct {
-	UserID  uint64         `json:"user_id"`
-	Address string         `json:"address"`
-	Label   sql.NullString `json:"label"`
+	ExternalID string         `json:"external_id"`
+	UserID     uint64         `json:"user_id"`
+	Address    string         `json:"address"`
+	Label      sql.NullString `json:"label"`
 }
 
 // ============================================================================
@@ -61,7 +62,12 @@ type CreateWalletParams struct {
 // 지갑 등록 (address는 서비스에서 lower-case 변환 후 전달)
 // is_verified=false, is_primary=false 기본값
 func (q *Queries) CreateWallet(ctx context.Context, arg CreateWalletParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, createWallet, arg.UserID, arg.Address, arg.Label)
+	return q.db.ExecContext(ctx, createWallet,
+		arg.ExternalID,
+		arg.UserID,
+		arg.Address,
+		arg.Label,
+	)
 }
 
 const existsVerifiedWalletByUser = `-- name: ExistsVerifiedWalletByUser :one
@@ -97,7 +103,7 @@ func (q *Queries) ExistsWalletByAddress(ctx context.Context, address string) (bo
 }
 
 const getPrimaryWallet = `-- name: GetPrimaryWallet :one
-SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at FROM wallets
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets
 WHERE user_id = ? AND is_primary = true
 LIMIT 1
 `
@@ -115,12 +121,13 @@ func (q *Queries) GetPrimaryWallet(ctx context.Context, userID uint64) (Wallet, 
 		&i.IsVerified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
 const getWalletByAddress = `-- name: GetWalletByAddress :one
-SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at FROM wallets WHERE address = ?
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets WHERE address = ?
 `
 
 // 주소로 지갑 조회 (address는 lower-case로 전달)
@@ -136,15 +143,67 @@ func (q *Queries) GetWalletByAddress(ctx context.Context, address string) (Walle
 		&i.IsVerified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
+	)
+	return i, err
+}
+
+const getWalletByExternalID = `-- name: GetWalletByExternalID :one
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets WHERE external_id = ?
+`
+
+// 외부 식별자로 지갑 조회
+func (q *Queries) GetWalletByExternalID(ctx context.Context, externalID string) (Wallet, error) {
+	row := q.db.QueryRowContext(ctx, getWalletByExternalID, externalID)
+	var i Wallet
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Address,
+		&i.Label,
+		&i.IsPrimary,
+		&i.IsVerified,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExternalID,
+	)
+	return i, err
+}
+
+const getWalletByExternalIDAndUser = `-- name: GetWalletByExternalIDAndUser :one
+SELECT w.id, w.user_id, w.address, w.label, w.is_primary, w.is_verified, w.created_at, w.updated_at, w.external_id FROM wallets w
+JOIN users u ON w.user_id = u.id
+WHERE w.external_id = ? AND u.external_id = ?
+`
+
+type GetWalletByExternalIDAndUserParams struct {
+	ExternalID   string         `json:"external_id"`
+	ExternalID_2 sql.NullString `json:"external_id_2"`
+}
+
+// 외부 식별자 + 사용자 소유권 검증 조회 (외부 API용)
+func (q *Queries) GetWalletByExternalIDAndUser(ctx context.Context, arg GetWalletByExternalIDAndUserParams) (Wallet, error) {
+	row := q.db.QueryRowContext(ctx, getWalletByExternalIDAndUser, arg.ExternalID, arg.ExternalID_2)
+	var i Wallet
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Address,
+		&i.Label,
+		&i.IsPrimary,
+		&i.IsVerified,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
 const getWalletByID = `-- name: GetWalletByID :one
-SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at FROM wallets WHERE id = ?
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets WHERE id = ?
 `
 
-// ID로 지갑 조회
+// ID로 지갑 조회 (내부 전용 - 외부 API에서는 사용 금지)
 func (q *Queries) GetWalletByID(ctx context.Context, id uint64) (Wallet, error) {
 	row := q.db.QueryRowContext(ctx, getWalletByID, id)
 	var i Wallet
@@ -157,12 +216,13 @@ func (q *Queries) GetWalletByID(ctx context.Context, id uint64) (Wallet, error) 
 		&i.IsVerified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
 const getWalletByIDAndUser = `-- name: GetWalletByIDAndUser :one
-SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at FROM wallets
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets
 WHERE id = ? AND user_id = ?
 `
 
@@ -171,7 +231,7 @@ type GetWalletByIDAndUserParams struct {
 	UserID uint64 `json:"user_id"`
 }
 
-// ID + 사용자 소유권 검증 조회
+// ID + 사용자 소유권 검증 조회 (내부용)
 func (q *Queries) GetWalletByIDAndUser(ctx context.Context, arg GetWalletByIDAndUserParams) (Wallet, error) {
 	row := q.db.QueryRowContext(ctx, getWalletByIDAndUser, arg.ID, arg.UserID)
 	var i Wallet
@@ -184,12 +244,13 @@ func (q *Queries) GetWalletByIDAndUser(ctx context.Context, arg GetWalletByIDAnd
 		&i.IsVerified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
 const getWalletForUpdate = `-- name: GetWalletForUpdate :one
-SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at FROM wallets
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets
 WHERE id = ? AND user_id = ?
 FOR UPDATE
 `
@@ -212,6 +273,7 @@ func (q *Queries) GetWalletForUpdate(ctx context.Context, arg GetWalletForUpdate
 		&i.IsVerified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
@@ -237,7 +299,7 @@ func (q *Queries) HardDeleteWallet(ctx context.Context, arg HardDeleteWalletPara
 }
 
 const listWalletsByUser = `-- name: ListWalletsByUser :many
-SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at FROM wallets
+SELECT id, user_id, address, label, is_primary, is_verified, created_at, updated_at, external_id FROM wallets
 WHERE user_id = ?
 ORDER BY is_primary DESC, created_at ASC
 `
@@ -261,6 +323,48 @@ func (q *Queries) ListWalletsByUser(ctx context.Context, userID uint64) ([]Walle
 			&i.IsVerified,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExternalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWalletsByUserExternalID = `-- name: ListWalletsByUserExternalID :many
+SELECT w.id, w.user_id, w.address, w.label, w.is_primary, w.is_verified, w.created_at, w.updated_at, w.external_id FROM wallets w
+JOIN users u ON w.user_id = u.id
+WHERE u.external_id = ?
+ORDER BY w.is_primary DESC, w.created_at ASC
+`
+
+// 사용자 external_id로 지갑 목록 조회 (외부 API용)
+func (q *Queries) ListWalletsByUserExternalID(ctx context.Context, externalID sql.NullString) ([]Wallet, error) {
+	rows, err := q.db.QueryContext(ctx, listWalletsByUserExternalID, externalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Wallet{}
+	for rows.Next() {
+		var i Wallet
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Address,
+			&i.Label,
+			&i.IsPrimary,
+			&i.IsVerified,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ExternalID,
 		); err != nil {
 			return nil, err
 		}
@@ -286,13 +390,13 @@ type SetWalletPrimaryParams struct {
 	UserID uint64 `json:"user_id"`
 }
 
-// 새 Primary 지갑 설정 (소유권 검증 포함)
+// 새 Primary 지갑 설정 (소유권 + 검증 상태 확인)
 // SetPrimary 트랜잭션: 1) GetUserForUpdate 2) ClearPrimaryWallet 3) SetWalletPrimary
 func (q *Queries) SetWalletPrimary(ctx context.Context, arg SetWalletPrimaryParams) (sql.Result, error) {
 	return q.db.ExecContext(ctx, setWalletPrimary, arg.ID, arg.UserID)
 }
 
-const updateWalletLabel = `-- name: UpdateWalletLabel :exec
+const updateWalletLabel = `-- name: UpdateWalletLabel :execresult
 UPDATE wallets
 SET label = ?, updated_at = NOW()
 WHERE id = ? AND user_id = ?
@@ -305,16 +409,15 @@ type UpdateWalletLabelParams struct {
 }
 
 // 지갑 라벨 변경
-func (q *Queries) UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) error {
-	_, err := q.db.ExecContext(ctx, updateWalletLabel, arg.Label, arg.ID, arg.UserID)
-	return err
+func (q *Queries) UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateWalletLabel, arg.Label, arg.ID, arg.UserID)
 }
 
-const updateWalletVerified = `-- name: UpdateWalletVerified :exec
+const updateWalletVerified = `-- name: UpdateWalletVerified :execresult
 
 UPDATE wallets
 SET is_verified = true, updated_at = NOW()
-WHERE id = ? AND user_id = ?
+WHERE id = ? AND user_id = ? AND is_verified = false
 `
 
 type UpdateWalletVerifiedParams struct {
@@ -323,10 +426,9 @@ type UpdateWalletVerifiedParams struct {
 }
 
 // ============================================================================
-// 지갑 상태 업데이트
+// 지갑 상태 업데이트 (:execresult로 RowsAffected 검증 가능)
 // ============================================================================
 // EIP-712 서명 검증 완료
-func (q *Queries) UpdateWalletVerified(ctx context.Context, arg UpdateWalletVerifiedParams) error {
-	_, err := q.db.ExecContext(ctx, updateWalletVerified, arg.ID, arg.UserID)
-	return err
+func (q *Queries) UpdateWalletVerified(ctx context.Context, arg UpdateWalletVerifiedParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateWalletVerified, arg.ID, arg.UserID)
 }

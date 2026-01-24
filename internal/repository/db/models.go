@@ -874,6 +874,7 @@ type Wallet struct {
 	IsVerified bool           `json:"is_verified"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
+	ExternalID string         `json:"external_id"`
 }
 
 type Withdrawal struct {

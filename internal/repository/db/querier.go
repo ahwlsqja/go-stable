@@ -86,9 +86,13 @@ type Querier interface {
 	GetUserForUpdate(ctx context.Context, id uint64) (User, error)
 	// 주소로 지갑 조회 (address는 lower-case로 전달)
 	GetWalletByAddress(ctx context.Context, address string) (Wallet, error)
-	// ID로 지갑 조회
+	// 외부 식별자로 지갑 조회
+	GetWalletByExternalID(ctx context.Context, externalID string) (Wallet, error)
+	// 외부 식별자 + 사용자 소유권 검증 조회 (외부 API용)
+	GetWalletByExternalIDAndUser(ctx context.Context, arg GetWalletByExternalIDAndUserParams) (Wallet, error)
+	// ID로 지갑 조회 (내부 전용 - 외부 API에서는 사용 금지)
 	GetWalletByID(ctx context.Context, id uint64) (Wallet, error)
-	// ID + 사용자 소유권 검증 조회
+	// ID + 사용자 소유권 검증 조회 (내부용)
 	GetWalletByIDAndUser(ctx context.Context, arg GetWalletByIDAndUserParams) (Wallet, error)
 	// 트랜잭션 내 row-lock (검증, Primary 설정 등)
 	GetWalletForUpdate(ctx context.Context, arg GetWalletForUpdateParams) (Wallet, error)
@@ -111,7 +115,9 @@ type Querier interface {
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	// 사용자의 전체 지갑 목록
 	ListWalletsByUser(ctx context.Context, userID uint64) ([]Wallet, error)
-	// 새 Primary 지갑 설정 (소유권 검증 포함)
+	// 사용자 external_id로 지갑 목록 조회 (외부 API용)
+	ListWalletsByUserExternalID(ctx context.Context, externalID sql.NullString) ([]Wallet, error)
+	// 새 Primary 지갑 설정 (소유권 + 검증 상태 확인)
 	// SetPrimary 트랜잭션: 1) GetUserForUpdate 2) ClearPrimaryWallet 3) SetWalletPrimary
 	SetWalletPrimary(ctx context.Context, arg SetWalletPrimaryParams) (sql.Result, error)
 	// ============================================================================
@@ -152,12 +158,12 @@ type Querier interface {
 	// 사용자 정지 (ACTIVE → SUSPENDED)
 	UpdateUserStatusToSuspended(ctx context.Context, id uint64) (sql.Result, error)
 	// 지갑 라벨 변경
-	UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) error
+	UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) (sql.Result, error)
 	// ============================================================================
-	// 지갑 상태 업데이트
+	// 지갑 상태 업데이트 (:execresult로 RowsAffected 검증 가능)
 	// ============================================================================
 	// EIP-712 서명 검증 완료
-	UpdateWalletVerified(ctx context.Context, arg UpdateWalletVerifiedParams) error
+	UpdateWalletVerified(ctx context.Context, arg UpdateWalletVerifiedParams) (sql.Result, error)
 }
 
 var _ Querier = (*Queries)(nil)
