@@ -7,15 +7,25 @@
 -- name: CreateWallet :execresult
 -- 지갑 등록 (address는 서비스에서 lower-case 변환 후 전달)
 -- is_verified=false, is_primary=false 기본값
-INSERT INTO wallets (user_id, address, label, is_primary, is_verified)
-VALUES (?, ?, ?, false, false);
+INSERT INTO wallets (external_id, user_id, address, label, is_primary, is_verified)
+VALUES (?, ?, ?, ?, false, false);
 
 -- name: GetWalletByID :one
--- ID로 지갑 조회
+-- ID로 지갑 조회 (내부 전용 - 외부 API에서는 사용 금지)
 SELECT * FROM wallets WHERE id = ?;
 
+-- name: GetWalletByExternalID :one
+-- 외부 식별자로 지갑 조회
+SELECT * FROM wallets WHERE external_id = ?;
+
+-- name: GetWalletByExternalIDAndUser :one
+-- 외부 식별자 + 사용자 소유권 검증 조회 (외부 API용)
+SELECT w.* FROM wallets w
+JOIN users u ON w.user_id = u.id
+WHERE w.external_id = ? AND u.external_id = ?;
+
 -- name: GetWalletByIDAndUser :one
--- ID + 사용자 소유권 검증 조회
+-- ID + 사용자 소유권 검증 조회 (내부용)
 SELECT * FROM wallets
 WHERE id = ? AND user_id = ?;
 
@@ -41,22 +51,29 @@ SELECT * FROM wallets
 WHERE user_id = ?
 ORDER BY is_primary DESC, created_at ASC;
 
+-- name: ListWalletsByUserExternalID :many
+-- 사용자 external_id로 지갑 목록 조회 (외부 API용)
+SELECT w.* FROM wallets w
+JOIN users u ON w.user_id = u.id
+WHERE u.external_id = ?
+ORDER BY w.is_primary DESC, w.created_at ASC;
+
 -- name: CountWalletsByUser :one
 -- 사용자의 지갑 수 조회
 SELECT COUNT(*) as total FROM wallets
 WHERE user_id = ?;
 
 -- ============================================================================
--- 지갑 상태 업데이트
+-- 지갑 상태 업데이트 (:execresult로 RowsAffected 검증 가능)
 -- ============================================================================
 
--- name: UpdateWalletVerified :exec
+-- name: UpdateWalletVerified :execresult
 -- EIP-712 서명 검증 완료
 UPDATE wallets
 SET is_verified = true, updated_at = NOW()
-WHERE id = ? AND user_id = ?;
+WHERE id = ? AND user_id = ? AND is_verified = false;
 
--- name: UpdateWalletLabel :exec
+-- name: UpdateWalletLabel :execresult
 -- 지갑 라벨 변경
 UPDATE wallets
 SET label = ?, updated_at = NOW()
@@ -73,7 +90,7 @@ SET is_primary = false, updated_at = NOW()
 WHERE user_id = ? AND is_primary = true;
 
 -- name: SetWalletPrimary :execresult
--- 새 Primary 지갑 설정 (소유권 검증 포함)
+-- 새 Primary 지갑 설정 (소유권 + 검증 상태 확인)
 -- SetPrimary 트랜잭션: 1) GetUserForUpdate 2) ClearPrimaryWallet 3) SetWalletPrimary
 UPDATE wallets
 SET is_primary = true, updated_at = NOW()
