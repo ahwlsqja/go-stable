@@ -9,6 +9,7 @@ import (
 
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/pkg/nonce"
 	"github.com/ethereum/go-ethereum/common"
+	ethmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"go.uber.org/zap"
@@ -49,7 +50,7 @@ func NewEthVerifier(config Config, nonceStore nonce.Store, logger *zap.Logger) *
 		Domain: apitypes.TypedDataDomain{
 			Name:              "B2B Settlement",
 			Version:           "1",
-			ChainId:           (*apitypes.HexOrDecimal256)(big.NewInt(config.ChainID)),
+			ChainId:           ethmath.NewHexOrDecimal256(config.ChainID),
 			VerifyingContract: config.VerifyingContract,
 		},
 	}
