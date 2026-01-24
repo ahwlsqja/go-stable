@@ -3,13 +3,21 @@ package user
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
+	"strings"
 
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/common/errors"
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/repository/db"
 	pkgdb "github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/pkg/db"
+	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+)
+
+// MySQL error codes
+const (
+	mysqlErrDuplicateEntry = 1062
 )
 
 // Service handles user business logic
@@ -28,7 +36,7 @@ func NewService(txRunner *pkgdb.TxRunner, logger *zap.Logger) *Service {
 
 // CreateUser creates a new user with associated account
 func (s *Service) CreateUser(ctx context.Context, req *CreateUserRequest) (*db.User, error) {
-	// Check email uniqueness
+	// Check email uniqueness (soft check - DB unique constraint is the final guard)
 	exists, err := s.txRunner.Queries().ExistsUserByEmail(ctx, req.Email)
 	if err != nil {
 		s.logger.Error("failed to check email existence", zap.Error(err))
@@ -57,6 +65,10 @@ func (s *Service) CreateUser(ctx context.Context, req *CreateUserRequest) (*db.U
 			Role:       db.UsersRole(req.Role),
 		})
 		if err != nil {
+			// Handle duplicate key error (race condition or deleted email reuse attempt)
+			if isDuplicateKeyError(err) {
+				return errors.Conflict("Email already registered or previously used")
+			}
 			s.logger.Error("failed to create user", zap.Error(err))
 			return errors.DBError(err)
 		}
@@ -100,9 +112,22 @@ func (s *Service) CreateUser(ctx context.Context, req *CreateUserRequest) (*db.U
 	return createdUser, nil
 }
 
-// GetUserByExternalID retrieves user by external ID
+// GetUserByExternalID retrieves user by external ID (excludes DELETED)
 func (s *Service) GetUserByExternalID(ctx context.Context, externalID string) (*db.User, error) {
 	user, err := s.txRunner.Queries().GetUserByExternalID(ctx, sql.NullString{String: externalID, Valid: true})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.NotFound("User")
+		}
+		s.logger.Error("failed to get user", zap.Error(err), zap.String("external_id", externalID))
+		return nil, errors.DBError(err)
+	}
+	return &user, nil
+}
+
+// getUserByExternalIDIncludeDeleted retrieves user including DELETED status (internal use)
+func (s *Service) getUserByExternalIDIncludeDeleted(ctx context.Context, externalID string) (*db.User, error) {
+	user, err := s.txRunner.Queries().GetUserByExternalIDIncludeDeleted(ctx, sql.NullString{String: externalID, Valid: true})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.NotFound("User")
@@ -128,7 +153,7 @@ func (s *Service) GetUserByID(ctx context.Context, id uint64) (*db.User, error) 
 
 // UpdateProfile updates user profile (name, phone)
 func (s *Service) UpdateProfile(ctx context.Context, externalID string, req *UpdateUserProfileRequest) (*db.User, error) {
-	// Get user first
+	// Get user first (excludes DELETED - can't update deleted user)
 	user, err := s.GetUserByExternalID(ctx, externalID)
 	if err != nil {
 		return nil, err
@@ -179,19 +204,35 @@ func (s *Service) UpdateRole(ctx context.Context, externalID string, req *Update
 
 // SuspendUser suspends a user (ACTIVE -> SUSPENDED)
 func (s *Service) SuspendUser(ctx context.Context, externalID string) (*db.User, error) {
-	user, err := s.GetUserByExternalID(ctx, externalID)
+	// Use internal query to include DELETED for proper state checking
+	user, err := s.getUserByExternalIDIncludeDeleted(ctx, externalID)
 	if err != nil {
 		return nil, err
 	}
 
+	// Check current status before attempting update
+	if user.Status == db.UsersStatusDELETED {
+		return nil, errors.NotFound("User") // Deleted users appear as not found to external API
+	}
 	if user.Status != db.UsersStatusACTIVE {
 		return nil, errors.InvalidStateTransition(string(user.Status), "SUSPENDED")
 	}
 
-	err = s.txRunner.Queries().UpdateUserStatusToSuspended(ctx, user.ID)
+	result, err := s.txRunner.Queries().UpdateUserStatusToSuspended(ctx, user.ID)
 	if err != nil {
 		s.logger.Error("failed to suspend user", zap.Error(err), zap.String("external_id", externalID))
 		return nil, errors.DBError(err)
+	}
+
+	// Verify update actually happened (防止 race condition)
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		// State changed between check and update - refetch and report actual state
+		currentUser, _ := s.getUserByExternalIDIncludeDeleted(ctx, externalID)
+		if currentUser != nil {
+			return nil, errors.InvalidStateTransition(string(currentUser.Status), "SUSPENDED")
+		}
+		return nil, errors.Internal("Failed to suspend user")
 	}
 
 	s.logger.Info("user suspended", zap.String("external_id", externalID))
@@ -200,7 +241,8 @@ func (s *Service) SuspendUser(ctx context.Context, externalID string) (*db.User,
 
 // ActivateUser reactivates a suspended user (SUSPENDED -> ACTIVE)
 func (s *Service) ActivateUser(ctx context.Context, externalID string) (*db.User, error) {
-	user, err := s.GetUserByExternalID(ctx, externalID)
+	// Use internal query to include DELETED for proper state checking
+	user, err := s.getUserByExternalIDIncludeDeleted(ctx, externalID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +257,20 @@ func (s *Service) ActivateUser(ctx context.Context, externalID string) (*db.User
 		return nil, errors.InvalidStateTransition(string(user.Status), "ACTIVE")
 	}
 
-	err = s.txRunner.Queries().UpdateUserStatusToActive(ctx, user.ID)
+	result, err := s.txRunner.Queries().UpdateUserStatusToActive(ctx, user.ID)
 	if err != nil {
 		s.logger.Error("failed to activate user", zap.Error(err), zap.String("external_id", externalID))
 		return nil, errors.DBError(err)
+	}
+
+	// Verify update actually happened
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		currentUser, _ := s.getUserByExternalIDIncludeDeleted(ctx, externalID)
+		if currentUser != nil {
+			return nil, errors.InvalidStateTransition(string(currentUser.Status), "ACTIVE")
+		}
+		return nil, errors.Internal("Failed to activate user")
 	}
 
 	s.logger.Info("user activated", zap.String("external_id", externalID))
@@ -227,25 +279,49 @@ func (s *Service) ActivateUser(ctx context.Context, externalID string) (*db.User
 
 // DeleteUser soft-deletes a user (one-way, cannot be recovered)
 func (s *Service) DeleteUser(ctx context.Context, externalID string) error {
-	user, err := s.GetUserByExternalID(ctx, externalID)
+	// Use internal query for idempotency check
+	user, err := s.getUserByExternalIDIncludeDeleted(ctx, externalID)
 	if err != nil {
 		return err
 	}
 
+	// Already deleted - idempotent success
 	if user.Status == db.UsersStatusDELETED {
-		return nil // Already deleted, idempotent
+		return nil
 	}
 
 	err = s.txRunner.WithTx(ctx, func(q *db.Queries) error {
 		// 1. Delete user
-		if err := q.UpdateUserStatusToDeleted(ctx, user.ID); err != nil {
+		result, err := q.UpdateUserStatusToDeleted(ctx, user.ID)
+		if err != nil {
 			return errors.DBError(err)
 		}
 
-		// 2. Close associated account
-		if err := q.UpdateAccountStatusToClosed(ctx, user.ID); err != nil {
-			s.logger.Warn("failed to close account", zap.Error(err), zap.String("external_id", externalID))
-			// Don't fail the whole operation for account closure
+		affected, _ := result.RowsAffected()
+		if affected == 0 {
+			// Already deleted by another process - idempotent success
+			return nil
+		}
+
+		// 2. Close associated account (fetch by owner_id, close by account.ID)
+		account, err := q.GetAccountByOwnerID(ctx, sql.NullInt64{Int64: int64(user.ID), Valid: true})
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// No account exists - OK
+				s.logger.Warn("no account found for user", zap.String("external_id", externalID))
+				return nil
+			}
+			s.logger.Warn("failed to get account for closure", zap.Error(err), zap.String("external_id", externalID))
+			// Don't fail user deletion for account lookup failure
+			return nil
+		}
+
+		// Close account using correct account.ID
+		if err := q.UpdateAccountStatusToClosed(ctx, account.ID); err != nil {
+			s.logger.Warn("failed to close account", zap.Error(err),
+				zap.String("external_id", externalID),
+				zap.Uint64("account_id", account.ID))
+			// Don't fail user deletion for account closure failure
 		}
 
 		return nil
@@ -376,4 +452,21 @@ func (s *Service) RejectKyc(ctx context.Context, externalID string) (*db.User, e
 
 	s.logger.Info("KYC rejected", zap.String("external_id", externalID))
 	return s.GetUserByExternalID(ctx, externalID)
+}
+
+// ============================================================================
+// Helper functions
+// ============================================================================
+
+// isDuplicateKeyError checks if the error is a MySQL duplicate key error
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mysqlErr *mysql.MySQLError
+	if stderrors.As(err, &mysqlErr) {
+		return mysqlErr.Number == mysqlErrDuplicateEntry
+	}
+	// Fallback: check error message
+	return strings.Contains(err.Error(), "Duplicate entry")
 }
