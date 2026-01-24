@@ -10,12 +10,151 @@ import (
 )
 
 type Querier interface {
+	// Primary 지갑 연결 해제
+	ClearAccountPrimaryWallet(ctx context.Context, ownerID sql.NullInt64) error
+	// ============================================================================
+	// Primary 지갑 설정 (트랜잭션 내 호출)
+	// ============================================================================
+	// 기존 Primary 지갑 해제 (SetPrimary 트랜잭션 첫 단계)
+	ClearPrimaryWallet(ctx context.Context, userID uint64) error
+	// 타입별 계정 수
+	CountAccountsByType(ctx context.Context, accountType AccountsAccountType) (int64, error)
+	// 사용자 수 조회 (페이징용)
+	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
+	// 사용자의 지갑 수 조회
+	CountWalletsByUser(ctx context.Context, userID uint64) (int64, error)
+	// ============================================================================
+	// Account Queries - Phase 1
+	// ============================================================================
+	// NOTE: external_id는 서비스 레이어에서 UUID 생성 후 전달
+	// 계정 생성 (사용자 회원가입 시 자동 생성)
+	// account_type: USER(일반), MERCHANT(판매자), ESCROW(에스크로), SYSTEM(시스템)
+	CreateAccount(ctx context.Context, arg CreateAccountParams) (sql.Result, error)
 	CreateProduct(ctx context.Context, arg CreateProductParams) (sql.Result, error)
+	// ============================================================================
+	// User Queries - Phase 1
+	// ============================================================================
+	// 사용자 생성 (external_id는 서비스 레이어에서 UUID 생성 후 전달)
+	CreateUser(ctx context.Context, arg CreateUserParams) (sql.Result, error)
+	// ============================================================================
+	// Wallet Queries - Phase 1
+	// ============================================================================
+	// NOTE: wallet address는 저장/조회 시 lower-case normalize 적용
+	//       서비스 레이어에서 strings.ToLower() 처리 후 쿼리 호출
+	// 지갑 등록 (address는 서비스에서 lower-case 변환 후 전달)
+	// is_verified=false, is_primary=false 기본값
+	CreateWallet(ctx context.Context, arg CreateWalletParams) (sql.Result, error)
 	DeleteProduct(ctx context.Context, id uint64) error
+	// 이메일 중복 체크
+	ExistsUserByEmail(ctx context.Context, email string) (bool, error)
+	// 사용자의 검증된 지갑 존재 여부
+	ExistsVerifiedWalletByUser(ctx context.Context, userID uint64) (bool, error)
+	// ============================================================================
+	// 지갑 존재 여부 체크
+	// ============================================================================
+	// 지갑 주소 중복 체크 (address는 lower-case로 전달)
+	ExistsWalletByAddress(ctx context.Context, address string) (bool, error)
+	// ============================================================================
+	// 잔액 조회 (Phase 3+에서 사용, Phase 1에서는 미사용)
+	// ============================================================================
+	// 잔액 조회 (balance, hold_balance, version)
+	GetAccountBalance(ctx context.Context, id uint64) (GetAccountBalanceRow, error)
+	// 외부 식별자로 조회 (API 노출용)
+	GetAccountByExternalID(ctx context.Context, externalID sql.NullString) (Account, error)
+	// ID로 계정 조회
+	GetAccountByID(ctx context.Context, id uint64) (Account, error)
+	// 사용자 ID로 계정 조회 + row-lock
+	GetAccountByOwnerForUpdate(ctx context.Context, ownerID sql.NullInt64) (Account, error)
+	// 사용자 ID로 계정 조회 (1:1 관계 가정)
+	GetAccountByOwnerID(ctx context.Context, ownerID sql.NullInt64) (Account, error)
+	// 트랜잭션 내 row-lock (잔액 변경, Primary 지갑 연결 등)
+	GetAccountForUpdate(ctx context.Context, id uint64) (Account, error)
+	// 사용자의 Primary 지갑 조회
+	GetPrimaryWallet(ctx context.Context, userID uint64) (Wallet, error)
 	GetProduct(ctx context.Context, id uint64) (Product, error)
 	GetProductBySKU(ctx context.Context, sku string) (Product, error)
+	// 이메일로 조회 (중복 체크, 로그인 등)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
+	// 외부 식별자로 조회 (API 노출용)
+	GetUserByExternalID(ctx context.Context, externalID sql.NullString) (User, error)
+	// 소프트 삭제된 사용자 제외
+	GetUserByID(ctx context.Context, id uint64) (User, error)
+	// 트랜잭션 내 row-lock (Primary 지갑 설정, 상태 변경 등 동시성 제어)
+	GetUserForUpdate(ctx context.Context, id uint64) (User, error)
+	// 주소로 지갑 조회 (address는 lower-case로 전달)
+	GetWalletByAddress(ctx context.Context, address string) (Wallet, error)
+	// ID로 지갑 조회
+	GetWalletByID(ctx context.Context, id uint64) (Wallet, error)
+	// ID + 사용자 소유권 검증 조회
+	GetWalletByIDAndUser(ctx context.Context, arg GetWalletByIDAndUserParams) (Wallet, error)
+	// 트랜잭션 내 row-lock (검증, Primary 설정 등)
+	GetWalletForUpdate(ctx context.Context, arg GetWalletForUpdateParams) (Wallet, error)
+	// ============================================================================
+	// 지갑 삭제
+	// ============================================================================
+	// TODO: Phase 6 이후 소프트 삭제(deleted_at 컬럼) 전환 검토
+	// Primary 지갑은 삭제 불가 (is_primary = false 조건)
+	HardDeleteWallet(ctx context.Context, arg HardDeleteWalletParams) (sql.Result, error)
+	// ============================================================================
+	// 목록 조회
+	// ============================================================================
+	// 타입별 계정 목록
+	ListAccountsByType(ctx context.Context, arg ListAccountsByTypeParams) ([]Account, error)
 	ListProducts(ctx context.Context, arg ListProductsParams) ([]Product, error)
+	// ============================================================================
+	// 목록 조회
+	// ============================================================================
+	// 사용자 목록 조회 (상태 필터 옵션, 페이징)
+	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	// 사용자의 전체 지갑 목록
+	ListWalletsByUser(ctx context.Context, userID uint64) ([]Wallet, error)
+	// 새 Primary 지갑 설정 (소유권 검증 포함)
+	// SetPrimary 트랜잭션: 1) GetUserForUpdate 2) ClearPrimaryWallet 3) SetWalletPrimary
+	SetWalletPrimary(ctx context.Context, arg SetWalletPrimaryParams) (sql.Result, error)
+	// ============================================================================
+	// 계정 업데이트
+	// ============================================================================
+	// Primary 지갑 연결 (지갑 SetPrimary 후 호출)
+	UpdateAccountPrimaryWallet(ctx context.Context, arg UpdateAccountPrimaryWalletParams) error
+	// 정지 해제 (SUSPENDED → ACTIVE)
+	UpdateAccountStatusToActive(ctx context.Context, id uint64) error
+	// 계정 폐쇄 (사용자 탈퇴 시)
+	UpdateAccountStatusToClosed(ctx context.Context, id uint64) error
+	// ============================================================================
+	// 계정 상태 변경
+	// ============================================================================
+	// 계정 정지 (ACTIVE → SUSPENDED)
+	UpdateAccountStatusToSuspended(ctx context.Context, id uint64) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) error
+	// ============================================================================
+	// KYC 상태 변경 쿼리 (상태별 분리)
+	// ============================================================================
+	// KYC 심사 요청 (NONE/REJECTED → PENDING)
+	UpdateUserKycToPending(ctx context.Context, id uint64) error
+	// KYC 거절 (PENDING → REJECTED)
+	UpdateUserKycToRejected(ctx context.Context, id uint64) error
+	// KYC 승인 (PENDING → VERIFIED, kyc_verified_at 최초 설정 시만)
+	UpdateUserKycToVerified(ctx context.Context, id uint64) error
+	// 프로필 정보 업데이트 (이름, 전화번호)
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
+	// 역할 변경 (BUYER, SELLER, BOTH, ADMIN)
+	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
+	// 정지 해제 (SUSPENDED → ACTIVE only, DELETED 복구 불가)
+	UpdateUserStatusToActive(ctx context.Context, id uint64) error
+	// 소프트 삭제 (복구 불가, 단방향 전이)
+	UpdateUserStatusToDeleted(ctx context.Context, id uint64) error
+	// ============================================================================
+	// 사용자 상태 변경
+	// ============================================================================
+	// 사용자 정지 (ACTIVE → SUSPENDED)
+	UpdateUserStatusToSuspended(ctx context.Context, id uint64) error
+	// 지갑 라벨 변경
+	UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) error
+	// ============================================================================
+	// 지갑 상태 업데이트
+	// ============================================================================
+	// EIP-712 서명 검증 완료
+	UpdateWalletVerified(ctx context.Context, arg UpdateWalletVerifiedParams) error
 }
 
 var _ Querier = (*Queries)(nil)
