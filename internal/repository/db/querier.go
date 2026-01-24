@@ -75,8 +75,11 @@ type Querier interface {
 	GetProductBySKU(ctx context.Context, sku string) (Product, error)
 	// 이메일로 조회 (중복 체크, 로그인 등)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
-	// 외부 식별자로 조회 (API 노출용)
+	// 외부 식별자로 조회 (API 노출용, DELETED 제외)
 	GetUserByExternalID(ctx context.Context, externalID sql.NullString) (User, error)
+	// 내부 상태 전이 검증용 (DELETED 포함)
+	// 멱등성 보장 및 상태 전이 체크에 사용
+	GetUserByExternalIDIncludeDeleted(ctx context.Context, externalID sql.NullString) (User, error)
 	// 소프트 삭제된 사용자 제외
 	GetUserByID(ctx context.Context, id uint64) (User, error)
 	// 트랜잭션 내 row-lock (Primary 지갑 설정, 상태 변경 등 동시성 제어)
@@ -140,14 +143,14 @@ type Querier interface {
 	// 역할 변경 (BUYER, SELLER, BOTH, ADMIN)
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	// 정지 해제 (SUSPENDED → ACTIVE only, DELETED 복구 불가)
-	UpdateUserStatusToActive(ctx context.Context, id uint64) error
+	UpdateUserStatusToActive(ctx context.Context, id uint64) (sql.Result, error)
 	// 소프트 삭제 (복구 불가, 단방향 전이)
-	UpdateUserStatusToDeleted(ctx context.Context, id uint64) error
+	UpdateUserStatusToDeleted(ctx context.Context, id uint64) (sql.Result, error)
 	// ============================================================================
-	// 사용자 상태 변경
+	// 사용자 상태 변경 (:execresult로 RowsAffected 검증 가능)
 	// ============================================================================
 	// 사용자 정지 (ACTIVE → SUSPENDED)
-	UpdateUserStatusToSuspended(ctx context.Context, id uint64) error
+	UpdateUserStatusToSuspended(ctx context.Context, id uint64) (sql.Result, error)
 	// 지갑 라벨 변경
 	UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) error
 	// ============================================================================

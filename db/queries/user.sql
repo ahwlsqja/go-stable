@@ -13,9 +13,15 @@ SELECT * FROM users
 WHERE id = ? AND status != 'DELETED';
 
 -- name: GetUserByExternalID :one
--- 외부 식별자로 조회 (API 노출용)
+-- 외부 식별자로 조회 (API 노출용, DELETED 제외)
 SELECT * FROM users
 WHERE external_id = ? AND status != 'DELETED';
+
+-- name: GetUserByExternalIDIncludeDeleted :one
+-- 내부 상태 전이 검증용 (DELETED 포함)
+-- 멱등성 보장 및 상태 전이 체크에 사용
+SELECT * FROM users
+WHERE external_id = ?;
 
 -- name: GetUserByEmail :one
 -- 이메일로 조회 (중복 체크, 로그인 등)
@@ -65,22 +71,22 @@ SET kyc_status = 'REJECTED', updated_at = NOW()
 WHERE id = ? AND status != 'DELETED';
 
 -- ============================================================================
--- 사용자 상태 변경
+-- 사용자 상태 변경 (:execresult로 RowsAffected 검증 가능)
 -- ============================================================================
 
--- name: UpdateUserStatusToSuspended :exec
+-- name: UpdateUserStatusToSuspended :execresult
 -- 사용자 정지 (ACTIVE → SUSPENDED)
 UPDATE users
 SET status = 'SUSPENDED', updated_at = NOW()
 WHERE id = ? AND status = 'ACTIVE';
 
--- name: UpdateUserStatusToActive :exec
+-- name: UpdateUserStatusToActive :execresult
 -- 정지 해제 (SUSPENDED → ACTIVE only, DELETED 복구 불가)
 UPDATE users
 SET status = 'ACTIVE', updated_at = NOW()
 WHERE id = ? AND status = 'SUSPENDED';
 
--- name: UpdateUserStatusToDeleted :exec
+-- name: UpdateUserStatusToDeleted :execresult
 -- 소프트 삭제 (복구 불가, 단방향 전이)
 UPDATE users
 SET status = 'DELETED', updated_at = NOW()

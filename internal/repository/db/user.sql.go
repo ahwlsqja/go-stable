@@ -107,9 +107,35 @@ SELECT id, email, external_id, name, phone, role, kyc_status, kyc_verified_at, s
 WHERE external_id = ? AND status != 'DELETED'
 `
 
-// 외부 식별자로 조회 (API 노출용)
+// 외부 식별자로 조회 (API 노출용, DELETED 제외)
 func (q *Queries) GetUserByExternalID(ctx context.Context, externalID sql.NullString) (User, error) {
 	row := q.db.QueryRowContext(ctx, getUserByExternalID, externalID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.ExternalID,
+		&i.Name,
+		&i.Phone,
+		&i.Role,
+		&i.KycStatus,
+		&i.KycVerifiedAt,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserByExternalIDIncludeDeleted = `-- name: GetUserByExternalIDIncludeDeleted :one
+SELECT id, email, external_id, name, phone, role, kyc_status, kyc_verified_at, status, created_at, updated_at FROM users
+WHERE external_id = ?
+`
+
+// 내부 상태 전이 검증용 (DELETED 포함)
+// 멱등성 보장 및 상태 전이 체크에 사용
+func (q *Queries) GetUserByExternalIDIncludeDeleted(ctx context.Context, externalID sql.NullString) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByExternalIDIncludeDeleted, externalID)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -318,31 +344,29 @@ func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) 
 	return err
 }
 
-const updateUserStatusToActive = `-- name: UpdateUserStatusToActive :exec
+const updateUserStatusToActive = `-- name: UpdateUserStatusToActive :execresult
 UPDATE users
 SET status = 'ACTIVE', updated_at = NOW()
 WHERE id = ? AND status = 'SUSPENDED'
 `
 
 // 정지 해제 (SUSPENDED → ACTIVE only, DELETED 복구 불가)
-func (q *Queries) UpdateUserStatusToActive(ctx context.Context, id uint64) error {
-	_, err := q.db.ExecContext(ctx, updateUserStatusToActive, id)
-	return err
+func (q *Queries) UpdateUserStatusToActive(ctx context.Context, id uint64) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateUserStatusToActive, id)
 }
 
-const updateUserStatusToDeleted = `-- name: UpdateUserStatusToDeleted :exec
+const updateUserStatusToDeleted = `-- name: UpdateUserStatusToDeleted :execresult
 UPDATE users
 SET status = 'DELETED', updated_at = NOW()
 WHERE id = ? AND status != 'DELETED'
 `
 
 // 소프트 삭제 (복구 불가, 단방향 전이)
-func (q *Queries) UpdateUserStatusToDeleted(ctx context.Context, id uint64) error {
-	_, err := q.db.ExecContext(ctx, updateUserStatusToDeleted, id)
-	return err
+func (q *Queries) UpdateUserStatusToDeleted(ctx context.Context, id uint64) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateUserStatusToDeleted, id)
 }
 
-const updateUserStatusToSuspended = `-- name: UpdateUserStatusToSuspended :exec
+const updateUserStatusToSuspended = `-- name: UpdateUserStatusToSuspended :execresult
 
 UPDATE users
 SET status = 'SUSPENDED', updated_at = NOW()
@@ -350,10 +374,9 @@ WHERE id = ? AND status = 'ACTIVE'
 `
 
 // ============================================================================
-// 사용자 상태 변경
+// 사용자 상태 변경 (:execresult로 RowsAffected 검증 가능)
 // ============================================================================
 // 사용자 정지 (ACTIVE → SUSPENDED)
-func (q *Queries) UpdateUserStatusToSuspended(ctx context.Context, id uint64) error {
-	_, err := q.db.ExecContext(ctx, updateUserStatusToSuspended, id)
-	return err
+func (q *Queries) UpdateUserStatusToSuspended(ctx context.Context, id uint64) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateUserStatusToSuspended, id)
 }
