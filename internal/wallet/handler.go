@@ -4,6 +4,7 @@ import (
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/common/errors"
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/common/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Handler handles HTTP requests for wallet operations
@@ -31,6 +32,32 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 }
 
+// validateUUID validates UUID format
+func validateUUID(id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return errors.InvalidInput("Invalid UUID format")
+	}
+	return nil
+}
+
+// extractAndValidateUserID extracts and validates userId from path
+func extractAndValidateUserID(c *gin.Context) (string, error) {
+	userID := c.Param("userId")
+	if err := validateUUID(userID); err != nil {
+		return "", err
+	}
+	return userID, nil
+}
+
+// extractAndValidateWalletID extracts and validates walletId from path
+func extractAndValidateWalletID(c *gin.Context) (string, error) {
+	walletID := c.Param("walletId")
+	if err := validateUUID(walletID); err != nil {
+		return "", err
+	}
+	return walletID, nil
+}
+
 // RegisterWallet godoc
 // @Summary Register a new wallet
 // @Description Register a new Ethereum wallet for the user
@@ -46,7 +73,11 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets [post]
 func (h *Handler) RegisterWallet(c *gin.Context) {
-	userExternalID := c.Param("userId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	var req RegisterWalletRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -71,12 +102,21 @@ func (h *Handler) RegisterWallet(c *gin.Context) {
 // @Param userId path string true "User external ID (UUID)"
 // @Param walletId path string true "Wallet external ID (UUID)"
 // @Success 200 {object} middleware.SuccessResponse{data=WalletResponse} "Wallet details"
+// @Failure 400 {object} middleware.ErrorResponse "Invalid UUID format"
 // @Failure 404 {object} middleware.ErrorResponse "Wallet not found"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets/{walletId} [get]
 func (h *Handler) GetWallet(c *gin.Context) {
-	userExternalID := c.Param("userId")
-	walletExternalID := c.Param("walletId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
+	walletExternalID, err := extractAndValidateWalletID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	wallet, err := h.service.GetWallet(c.Request.Context(), userExternalID, walletExternalID)
 	if err != nil {
@@ -94,10 +134,16 @@ func (h *Handler) GetWallet(c *gin.Context) {
 // @Produce json
 // @Param userId path string true "User external ID (UUID)"
 // @Success 200 {object} middleware.SuccessResponse{data=ListWalletsResponse} "Wallet list"
+// @Failure 400 {object} middleware.ErrorResponse "Invalid UUID format"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets [get]
+// TODO: Phase 2+ - Add pagination (page, page_size) when wallet count grows
 func (h *Handler) ListWallets(c *gin.Context) {
-	userExternalID := c.Param("userId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	result, err := h.service.ListWallets(c.Request.Context(), userExternalID)
 	if err != nil {
@@ -123,8 +169,16 @@ func (h *Handler) ListWallets(c *gin.Context) {
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets/{walletId}/label [put]
 func (h *Handler) UpdateLabel(c *gin.Context) {
-	userExternalID := c.Param("userId")
-	walletExternalID := c.Param("walletId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
+	walletExternalID, err := extractAndValidateWalletID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	var req UpdateLabelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -156,8 +210,16 @@ func (h *Handler) UpdateLabel(c *gin.Context) {
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets/{walletId}/verify [post]
 func (h *Handler) VerifyWallet(c *gin.Context) {
-	userExternalID := c.Param("userId")
-	walletExternalID := c.Param("walletId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
+	walletExternalID, err := extractAndValidateWalletID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	var req VerifyWalletRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -187,8 +249,16 @@ func (h *Handler) VerifyWallet(c *gin.Context) {
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets/{walletId}/set-primary [post]
 func (h *Handler) SetPrimary(c *gin.Context) {
-	userExternalID := c.Param("userId")
-	walletExternalID := c.Param("walletId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
+	walletExternalID, err := extractAndValidateWalletID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	wallet, err := h.service.SetPrimary(c.Request.Context(), userExternalID, walletExternalID)
 	if err != nil {
@@ -212,8 +282,16 @@ func (h *Handler) SetPrimary(c *gin.Context) {
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
 // @Router /api/v1/users/{userId}/wallets/{walletId} [delete]
 func (h *Handler) DeleteWallet(c *gin.Context) {
-	userExternalID := c.Param("userId")
-	walletExternalID := c.Param("walletId")
+	userExternalID, err := extractAndValidateUserID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
+	walletExternalID, err := extractAndValidateWalletID(c)
+	if err != nil {
+		middleware.RespondError(c, err)
+		return
+	}
 
 	if err := h.service.DeleteWallet(c.Request.Context(), userExternalID, walletExternalID); err != nil {
 		middleware.RespondError(c, err)
