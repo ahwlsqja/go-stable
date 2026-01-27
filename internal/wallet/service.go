@@ -384,12 +384,27 @@ func (s *Service) SetPrimary(ctx context.Context, userExternalID, walletExternal
 	})
 }
 
-// DeleteWallet deletes a wallet (hard delete)
+// DeleteWallet deletes a wallet (soft delete)
 func (s *Service) DeleteWallet(ctx context.Context, userExternalID, walletExternalID string) error {
-	// Get wallet with ownership check
-	wallet, err := s.GetWallet(ctx, userExternalID, walletExternalID)
+	// Get wallet including deleted (for idempotency check)
+	wallet, err := s.txRunner.Queries().GetWalletByExternalIDAndUserIncludeDeleted(ctx, db.GetWalletByExternalIDAndUserIncludeDeletedParams{
+		ExternalID:   walletExternalID,
+		ExternalID_2: sql.NullString{String: userExternalID, Valid: true},
+	})
 	if err != nil {
-		return err
+		if err == sql.ErrNoRows {
+			return errors.NotFound("Wallet")
+		}
+		s.logger.Error("failed to get wallet for delete", zap.Error(err))
+		return errors.DBError(err)
+	}
+
+	// Already deleted - idempotent success
+	if wallet.DeletedAt.Valid {
+		s.logger.Debug("wallet already deleted (idempotent)",
+			zap.String("wallet_external_id", walletExternalID),
+		)
+		return nil
 	}
 
 	// Cannot delete primary wallet
@@ -397,8 +412,8 @@ func (s *Service) DeleteWallet(ctx context.Context, userExternalID, walletExtern
 		return errors.InvalidInput("Cannot delete primary wallet. Set another wallet as primary first.")
 	}
 
-	// Delete wallet
-	result, err := s.txRunner.Queries().HardDeleteWallet(ctx, db.HardDeleteWalletParams{
+	// Soft delete wallet
+	result, err := s.txRunner.Queries().SoftDeleteWallet(ctx, db.SoftDeleteWalletParams{
 		ID:     wallet.ID,
 		UserID: wallet.UserID,
 	})
@@ -409,19 +424,22 @@ func (s *Service) DeleteWallet(ctx context.Context, userExternalID, walletExtern
 
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		// 이 시점에 wallet은 존재했으므로, primary로 변경되었거나 권한 문제
+		// Race condition: wallet became primary or was deleted by another process
 		s.logger.Warn("wallet delete affected 0 rows",
 			zap.String("wallet_external_id", walletExternalID),
 			zap.Uint64("wallet_id", wallet.ID),
 		)
-		// 다시 조회하여 상태 확인
-		currentWallet, fetchErr := s.txRunner.Queries().GetWalletByID(ctx, wallet.ID)
+		// Re-fetch to check current state
+		currentWallet, fetchErr := s.txRunner.Queries().GetWalletByExternalIDAndUserIncludeDeleted(ctx, db.GetWalletByExternalIDAndUserIncludeDeletedParams{
+			ExternalID:   walletExternalID,
+			ExternalID_2: sql.NullString{String: userExternalID, Valid: true},
+		})
 		if fetchErr != nil {
-			if fetchErr == sql.ErrNoRows {
-				// 이미 삭제됨 - 멱등 처리
-				return nil
-			}
 			return errors.DBError(fetchErr)
+		}
+		if currentWallet.DeletedAt.Valid {
+			// Already deleted by another process - idempotent success
+			return nil
 		}
 		if currentWallet.IsPrimary {
 			return errors.InvalidInput("Cannot delete wallet - it is now the primary wallet")

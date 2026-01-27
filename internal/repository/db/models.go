@@ -866,15 +866,17 @@ type User struct {
 }
 
 type Wallet struct {
-	ID         uint64         `json:"id"`
-	UserID     uint64         `json:"user_id"`
-	Address    string         `json:"address"`
-	Label      sql.NullString `json:"label"`
-	IsPrimary  bool           `json:"is_primary"`
-	IsVerified bool           `json:"is_verified"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	ExternalID string         `json:"external_id"`
+	ID            uint64         `json:"id"`
+	UserID        uint64         `json:"user_id"`
+	Address       string         `json:"address"`
+	Label         sql.NullString `json:"label"`
+	IsPrimary     bool           `json:"is_primary"`
+	IsVerified    bool           `json:"is_verified"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	ExternalID    string         `json:"external_id"`
+	DeletedAt     sql.NullTime   `json:"deleted_at"`
+	AddressActive sql.NullString `json:"address_active"`
 }
 
 type Withdrawal struct {

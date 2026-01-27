@@ -15,13 +15,13 @@ type Querier interface {
 	// ============================================================================
 	// Primary 지갑 설정 (트랜잭션 내 호출)
 	// ============================================================================
-	// 기존 Primary 지갑 해제 (SetPrimary 트랜잭션 첫 단계)
+	// 기존 Primary 지갑 해제 (SetPrimary 트랜잭션 첫 단계, 삭제 제외)
 	ClearPrimaryWallet(ctx context.Context, userID uint64) error
 	// 타입별 계정 수
 	CountAccountsByType(ctx context.Context, accountType AccountsAccountType) (int64, error)
 	// 사용자 수 조회 (페이징용)
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
-	// 사용자의 지갑 수 조회
+	// 사용자의 지갑 수 조회 (삭제 제외)
 	CountWalletsByUser(ctx context.Context, userID uint64) (int64, error)
 	// ============================================================================
 	// Account Queries - Phase 1
@@ -41,18 +41,19 @@ type Querier interface {
 	// ============================================================================
 	// NOTE: wallet address는 저장/조회 시 lower-case normalize 적용
 	//       서비스 레이어에서 strings.ToLower() 처리 후 쿼리 호출
+	// NOTE: Soft Delete 적용 - deleted_at IS NULL 조건 필수
 	// 지갑 등록 (address는 서비스에서 lower-case 변환 후 전달)
 	// is_verified=false, is_primary=false 기본값
 	CreateWallet(ctx context.Context, arg CreateWalletParams) (sql.Result, error)
 	DeleteProduct(ctx context.Context, id uint64) error
 	// 이메일 중복 체크
 	ExistsUserByEmail(ctx context.Context, email string) (bool, error)
-	// 사용자의 검증된 지갑 존재 여부
+	// 사용자의 검증된 지갑 존재 여부 (삭제 제외)
 	ExistsVerifiedWalletByUser(ctx context.Context, userID uint64) (bool, error)
 	// ============================================================================
 	// 지갑 존재 여부 체크
 	// ============================================================================
-	// 지갑 주소 중복 체크 (address는 lower-case로 전달)
+	// 지갑 주소 중복 체크 (address는 lower-case로 전달, 삭제 제외)
 	ExistsWalletByAddress(ctx context.Context, address string) (bool, error)
 	// ============================================================================
 	// 잔액 조회 (Phase 3+에서 사용, Phase 1에서는 미사용)
@@ -69,7 +70,7 @@ type Querier interface {
 	GetAccountByOwnerID(ctx context.Context, ownerID sql.NullInt64) (Account, error)
 	// 트랜잭션 내 row-lock (잔액 변경, Primary 지갑 연결 등)
 	GetAccountForUpdate(ctx context.Context, id uint64) (Account, error)
-	// 사용자의 Primary 지갑 조회
+	// 사용자의 Primary 지갑 조회 (삭제 제외)
 	GetPrimaryWallet(ctx context.Context, userID uint64) (Wallet, error)
 	GetProduct(ctx context.Context, id uint64) (Product, error)
 	GetProductBySKU(ctx context.Context, sku string) (Product, error)
@@ -84,24 +85,22 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id uint64) (User, error)
 	// 트랜잭션 내 row-lock (Primary 지갑 설정, 상태 변경 등 동시성 제어)
 	GetUserForUpdate(ctx context.Context, id uint64) (User, error)
-	// 주소로 지갑 조회 (address는 lower-case로 전달)
+	// 주소로 지갑 조회 (address는 lower-case로 전달, 삭제 제외)
 	GetWalletByAddress(ctx context.Context, address string) (Wallet, error)
-	// 외부 식별자로 지갑 조회
+	// 외부 식별자로 지갑 조회 (삭제된 지갑 제외)
 	GetWalletByExternalID(ctx context.Context, externalID string) (Wallet, error)
-	// 외부 식별자 + 사용자 소유권 검증 조회 (외부 API용)
+	// 외부 식별자 + 사용자 소유권 검증 조회 (외부 API용, 삭제 제외)
 	GetWalletByExternalIDAndUser(ctx context.Context, arg GetWalletByExternalIDAndUserParams) (Wallet, error)
-	// ID로 지갑 조회 (내부 전용 - 외부 API에서는 사용 금지)
+	// 외부 식별자 + 사용자 소유권 검증 조회 (멱등성 체크용, 삭제 포함)
+	GetWalletByExternalIDAndUserIncludeDeleted(ctx context.Context, arg GetWalletByExternalIDAndUserIncludeDeletedParams) (Wallet, error)
+	// 외부 식별자로 지갑 조회 (삭제된 지갑 포함 - 멱등성 체크용)
+	GetWalletByExternalIDIncludeDeleted(ctx context.Context, externalID string) (Wallet, error)
+	// ID로 지갑 조회 (내부 전용 - 삭제된 지갑 제외)
 	GetWalletByID(ctx context.Context, id uint64) (Wallet, error)
-	// ID + 사용자 소유권 검증 조회 (내부용)
+	// ID + 사용자 소유권 검증 조회 (내부용, 삭제 제외)
 	GetWalletByIDAndUser(ctx context.Context, arg GetWalletByIDAndUserParams) (Wallet, error)
 	// 트랜잭션 내 row-lock (검증, Primary 설정 등)
 	GetWalletForUpdate(ctx context.Context, arg GetWalletForUpdateParams) (Wallet, error)
-	// ============================================================================
-	// 지갑 삭제
-	// ============================================================================
-	// TODO: Phase 6 이후 소프트 삭제(deleted_at 컬럼) 전환 검토
-	// Primary 지갑은 삭제 불가 (is_primary = false 조건)
-	HardDeleteWallet(ctx context.Context, arg HardDeleteWalletParams) (sql.Result, error)
 	// ============================================================================
 	// 목록 조회
 	// ============================================================================
@@ -113,13 +112,19 @@ type Querier interface {
 	// ============================================================================
 	// 사용자 목록 조회 (상태 필터 옵션, 페이징)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
-	// 사용자의 전체 지갑 목록
+	// 사용자의 전체 지갑 목록 (삭제 제외)
 	ListWalletsByUser(ctx context.Context, userID uint64) ([]Wallet, error)
-	// 사용자 external_id로 지갑 목록 조회 (외부 API용)
+	// 사용자 external_id로 지갑 목록 조회 (외부 API용, 삭제 제외)
 	ListWalletsByUserExternalID(ctx context.Context, externalID sql.NullString) ([]Wallet, error)
-	// 새 Primary 지갑 설정 (소유권 + 검증 상태 확인)
+	// 새 Primary 지갑 설정 (소유권 + 검증 상태 확인, 삭제 제외)
 	// SetPrimary 트랜잭션: 1) GetUserForUpdate 2) ClearPrimaryWallet 3) SetWalletPrimary
 	SetWalletPrimary(ctx context.Context, arg SetWalletPrimaryParams) (sql.Result, error)
+	// ============================================================================
+	// 지갑 삭제 (Soft Delete)
+	// ============================================================================
+	// Soft Delete - deleted_at 설정
+	// Primary 지갑은 삭제 불가 (is_primary = false 조건)
+	SoftDeleteWallet(ctx context.Context, arg SoftDeleteWalletParams) (sql.Result, error)
 	// ============================================================================
 	// 계정 업데이트
 	// ============================================================================
@@ -157,12 +162,12 @@ type Querier interface {
 	// ============================================================================
 	// 사용자 정지 (ACTIVE → SUSPENDED)
 	UpdateUserStatusToSuspended(ctx context.Context, id uint64) (sql.Result, error)
-	// 지갑 라벨 변경
+	// 지갑 라벨 변경 (삭제되지 않은 지갑만)
 	UpdateWalletLabel(ctx context.Context, arg UpdateWalletLabelParams) (sql.Result, error)
 	// ============================================================================
 	// 지갑 상태 업데이트 (:execresult로 RowsAffected 검증 가능)
 	// ============================================================================
-	// EIP-712 서명 검증 완료
+	// EIP-712 서명 검증 완료 (삭제되지 않은 지갑만)
 	UpdateWalletVerified(ctx context.Context, arg UpdateWalletVerifiedParams) (sql.Result, error)
 }
 
