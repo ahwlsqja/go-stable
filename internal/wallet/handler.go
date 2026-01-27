@@ -19,8 +19,8 @@ func NewHandler(service *Service) *Handler {
 
 // RegisterRoutes registers wallet routes on the router group
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	// Wallet routes under /users/:userId/wallets
-	wallets := rg.Group("/users/:userId/wallets")
+	// Wallet routes under /users/:id/wallets (uses :id to match user handler pattern)
+	wallets := rg.Group("/users/:id/wallets")
 	{
 		wallets.POST("", h.RegisterWallet)
 		wallets.GET("", h.ListWallets)
