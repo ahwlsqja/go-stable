@@ -14,6 +14,11 @@ import (
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/common/handler"
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/common/middleware"
 	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/config"
+	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/user"
+	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/internal/wallet"
+	pkgdb "github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/pkg/db"
+	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/pkg/eip712"
+	"github.com/ahwlsqja/StableCoin-B2B-Commerce-Settlement-Engine/pkg/nonce"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/redis/go-redis/v9"
@@ -182,17 +187,54 @@ func setupRouter(cfg *config.Config, logger *zap.Logger, db *sql.DB, rdb *redis.
 	router.GET("/health", healthHandler.Health)
 	router.GET("/ready", healthHandler.Ready)
 
+	// ============================================================================
+	// Dependencies Setup
+	// ============================================================================
+
+	// TxRunner for transaction management
+	txRunner := pkgdb.NewTxRunner(db)
+
+	// Nonce store for EIP-712 replay protection
+	nonceStore := nonce.NewRedisStore(rdb, logger)
+
+	// EIP-712 verifier for wallet signature verification
+	verifier := eip712.NewEthVerifier(eip712.Config{
+		ChainID:            cfg.EIP712.ChainID,
+		VerifyingContract:  cfg.EIP712.VerifyingContract,
+		TimestampTolerance: cfg.EIP712.TimestampTolerance,
+	}, nonceStore, logger)
+
+	// ============================================================================
+	// Service & Handler Setup
+	// ============================================================================
+
+	// User service & handler
+	userService := user.NewService(txRunner, logger)
+	userHandler := user.NewHandler(userService)
+
+	// Wallet service & handler
+	walletService := wallet.NewService(txRunner, verifier, logger)
+	walletHandler := wallet.NewHandler(walletService)
+
+	// ============================================================================
+	// Route Registration
+	// ============================================================================
+
 	// API v1 group
 	v1 := router.Group("/api/v1")
 	{
-		// Phase 1: Products & Inventory (TODO)
+		// Phase 1: User & Wallet
+		userHandler.RegisterRoutes(v1)
+		walletHandler.RegisterRoutes(v1)
+
+		// Phase 2: Products & Inventory (TODO)
 		_ = v1.Group("/products")
 		_ = v1.Group("/inventory")
 
-		// Phase 2: Orders (TODO)
+		// Phase 3: Orders (TODO)
 		_ = v1.Group("/orders")
 
-		// Phase 3: Payments & Settlements (TODO)
+		// Phase 4: Payments & Settlements (TODO)
 		_ = v1.Group("/payments")
 		_ = v1.Group("/settlements")
 		_ = v1.Group("/accounts")

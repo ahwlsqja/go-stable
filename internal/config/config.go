@@ -11,6 +11,13 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	Redis    RedisConfig
+	EIP712   EIP712Config
+}
+
+type EIP712Config struct {
+	ChainID            int64
+	VerifyingContract  string
+	TimestampTolerance time.Duration
 }
 
 type ServerConfig struct {
@@ -77,6 +84,11 @@ func Load() (*Config, error) {
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
+		EIP712: EIP712Config{
+			ChainID:            getEnvAsInt64("EIP712_CHAIN_ID", 1),
+			VerifyingContract:  getEnv("EIP712_VERIFYING_CONTRACT", "0x0000000000000000000000000000000000000000"),
+			TimestampTolerance: getEnvAsDuration("EIP712_TIMESTAMP_TOLERANCE", 5*time.Minute),
+		},
 	}, nil
 }
 
@@ -90,6 +102,15 @@ func getEnv(key, defaultValue string) string {
 func getEnvAsInt(key string, defaultValue int) int {
 	if value, exists := os.LookupEnv(key); exists {
 		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
+	}
+	return defaultValue
+}
+
+func getEnvAsInt64(key string, defaultValue int64) int64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if intVal, err := strconv.ParseInt(value, 10, 64); err == nil {
 			return intVal
 		}
 	}
