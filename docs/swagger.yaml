@@ -1,5 +1,26 @@
 basePath: /api/v1
 definitions:
+  github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorBody:
+    properties:
+      code:
+        type: string
+      details:
+        additionalProperties: {}
+        type: object
+      message:
+        type: string
+      request_id:
+        type: string
+    type: object
+  github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorBody'
+    type: object
+  github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse:
+    properties:
+      data: {}
+    type: object
   internal_common_handler.HealthResponse:
     properties:
       status:
@@ -18,6 +39,183 @@ definitions:
         example: ok
         type: string
     type: object
+  internal_user.CreateUserRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      name:
+        example: John Doe
+        maxLength: 100
+        minLength: 2
+        type: string
+      phone:
+        example: 010-1234-5678
+        maxLength: 20
+        minLength: 10
+        type: string
+      role:
+        enum:
+        - BUYER
+        - SELLER
+        - BOTH
+        example: BUYER
+        type: string
+    required:
+    - email
+    - name
+    - role
+    type: object
+  internal_user.ListUsersResponse:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/internal_user.UserResponse'
+        type: array
+    type: object
+  internal_user.UpdateUserProfileRequest:
+    properties:
+      name:
+        example: John Doe
+        maxLength: 100
+        minLength: 2
+        type: string
+      phone:
+        example: 010-1234-5678
+        maxLength: 20
+        minLength: 10
+        type: string
+    required:
+    - name
+    type: object
+  internal_user.UpdateUserRoleRequest:
+    properties:
+      role:
+        enum:
+        - BUYER
+        - SELLER
+        - BOTH
+        example: SELLER
+        type: string
+    required:
+    - role
+    type: object
+  internal_user.UserResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        example: user@example.com
+        type: string
+      id:
+        example: usr_abc123def456
+        type: string
+      kyc_status:
+        example: NONE
+        type: string
+      kyc_verified_at:
+        type: string
+      name:
+        example: John Doe
+        type: string
+      phone:
+        example: 010-1234-5678
+        type: string
+      role:
+        example: BUYER
+        type: string
+      status:
+        example: ACTIVE
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_wallet.ListWalletsResponse:
+    properties:
+      total:
+        type: integer
+      wallets:
+        items:
+          $ref: '#/definitions/internal_wallet.WalletResponse'
+        type: array
+    type: object
+  internal_wallet.RegisterWalletRequest:
+    properties:
+      address:
+        example: 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+        type: string
+      label:
+        example: My Main Wallet
+        maxLength: 50
+        type: string
+    required:
+    - address
+    type: object
+  internal_wallet.UpdateLabelRequest:
+    properties:
+      label:
+        example: Trading Wallet
+        maxLength: 50
+        type: string
+    required:
+    - label
+    type: object
+  internal_wallet.VerifyWalletRequest:
+    properties:
+      message:
+        $ref: '#/definitions/internal_wallet.VerifyWalletRequestMessage'
+      signature:
+        description: 'Signature: 0x prefix + 130 hex chars (65 bytes)'
+        example: 0x1234...abcd
+        type: string
+    required:
+    - message
+    - signature
+    type: object
+  internal_wallet.VerifyWalletRequestMessage:
+    properties:
+      nonce:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        maxLength: 64
+        minLength: 8
+        type: string
+      timestamp:
+        example: 1706000000
+        type: integer
+    required:
+    - nonce
+    - timestamp
+    type: object
+  internal_wallet.WalletResponse:
+    properties:
+      address:
+        example: 0x742d35cc6634c0532925a3b844bc454e4438f44e
+        type: string
+      created_at:
+        type: string
+      id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      is_primary:
+        example: false
+        type: boolean
+      is_verified:
+        example: false
+        type: boolean
+      label:
+        example: My Main Wallet
+        type: string
+      updated_at:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -31,6 +229,723 @@ info:
   title: B2B Commerce Settlement Engine API
   version: "1.0"
 paths:
+  /api/v1/users:
+    get:
+      description: Get paginated list of users with optional filters
+      parameters:
+      - description: Filter by role
+        enum:
+        - BUYER
+        - SELLER
+        - BOTH
+        - ADMIN
+        in: query
+        name: role
+        type: string
+      - description: Filter by KYC status
+        enum:
+        - NONE
+        - PENDING
+        - VERIFIED
+        - REJECTED
+        in: query
+        name: kyc_status
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Page size
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User list
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.ListUsersResponse'
+              type: object
+        "400":
+          description: Invalid query parameters
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: List users
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Register a new user with email, name, and role. An account is automatically
+        created.
+      parameters:
+      - description: User registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_user.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "409":
+          description: Email already registered
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Create a new user
+      tags:
+      - users
+  /api/v1/users/{id}:
+    delete:
+      description: Soft-delete a user (irreversible)
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: User deleted
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Delete user
+      tags:
+      - users
+    get:
+      description: Retrieve user details by external ID
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User details
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Get user by ID
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      description: Update user's name and phone number
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_user.UpdateUserProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated user
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Update user profile
+      tags:
+      - users
+  /api/v1/users/{id}/activate:
+    post:
+      description: Reactivate a suspended user (SUSPENDED -> ACTIVE)
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Activated user
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid state transition (deleted users cannot be reactivated)
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Activate user
+      tags:
+      - users
+  /api/v1/users/{id}/kyc/approve:
+    post:
+      description: Approve user's KYC verification (PENDING -> VERIFIED) - Admin only
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: KYC approved
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid state transition
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Approve KYC
+      tags:
+      - users
+  /api/v1/users/{id}/kyc/reject:
+    post:
+      description: Reject user's KYC verification (PENDING -> REJECTED) - Admin only
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: KYC rejected
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid state transition
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Reject KYC
+      tags:
+      - users
+  /api/v1/users/{id}/kyc/request:
+    post:
+      description: Request KYC verification for the user (NONE/REJECTED -> PENDING)
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: KYC requested
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid state transition
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Request KYC verification
+      tags:
+      - users
+  /api/v1/users/{id}/role:
+    put:
+      consumes:
+      - application/json
+      description: Change user's role (BUYER, SELLER, BOTH)
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Role update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_user.UpdateUserRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated user
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "403":
+          description: Cannot assign ADMIN role
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Update user role
+      tags:
+      - users
+  /api/v1/users/{id}/suspend:
+    post:
+      description: Suspend an active user (ACTIVE -> SUSPENDED)
+      parameters:
+      - description: User external ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Suspended user
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_user.UserResponse'
+              type: object
+        "400":
+          description: Invalid state transition
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Suspend user
+      tags:
+      - users
+  /api/v1/users/{id}/wallets:
+    get:
+      description: Get all wallets for a user
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallet list
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_wallet.ListWalletsResponse'
+              type: object
+        "400":
+          description: Invalid UUID format
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: List user wallets
+      tags:
+      - wallets
+    post:
+      consumes:
+      - application/json
+      description: Register a new Ethereum wallet for the user
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Wallet registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_wallet.RegisterWalletRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Wallet created
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_wallet.WalletResponse'
+              type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "409":
+          description: Wallet address already registered
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Register a new wallet
+      tags:
+      - wallets
+  /api/v1/users/{id}/wallets/{walletId}:
+    delete:
+      description: Delete a non-primary wallet (hard delete)
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Wallet external ID (UUID)
+        in: path
+        name: walletId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Wallet deleted
+        "400":
+          description: Cannot delete primary wallet
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Delete wallet
+      tags:
+      - wallets
+    get:
+      description: Retrieve wallet details by external ID
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Wallet external ID (UUID)
+        in: path
+        name: walletId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallet details
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_wallet.WalletResponse'
+              type: object
+        "400":
+          description: Invalid UUID format
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Get wallet by ID
+      tags:
+      - wallets
+  /api/v1/users/{id}/wallets/{walletId}/label:
+    put:
+      consumes:
+      - application/json
+      description: Update the label of a wallet
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Wallet external ID (UUID)
+        in: path
+        name: walletId
+        required: true
+        type: string
+      - description: Label update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_wallet.UpdateLabelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated wallet
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_wallet.WalletResponse'
+              type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Update wallet label
+      tags:
+      - wallets
+  /api/v1/users/{id}/wallets/{walletId}/set-primary:
+    post:
+      description: Set a verified wallet as the primary wallet
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Wallet external ID (UUID)
+        in: path
+        name: walletId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Primary wallet
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_wallet.WalletResponse'
+              type: object
+        "400":
+          description: Wallet not verified
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Set wallet as primary
+      tags:
+      - wallets
+  /api/v1/users/{id}/wallets/{walletId}/verify:
+    post:
+      consumes:
+      - application/json
+      description: Verify wallet ownership using EIP-712 signature
+      parameters:
+      - description: User external ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Wallet external ID (UUID)
+        in: path
+        name: walletId
+        required: true
+        type: string
+      - description: Signature and message data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_wallet.VerifyWalletRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verified wallet
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/internal_wallet.WalletResponse'
+              type: object
+        "400":
+          description: Invalid signature or verification failed
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_ahwlsqja_StableCoin-B2B-Commerce-Settlement-Engine_internal_common_middleware.ErrorResponse'
+      summary: Verify wallet ownership
+      tags:
+      - wallets
   /health:
     get:
       description: Returns server health status

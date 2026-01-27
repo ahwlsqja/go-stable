@@ -1,0 +1,867 @@
+{
+	"info": {
+		"_postman_id": "b2b-settlement-api-v1",
+		"name": "B2B Settlement Engine API",
+		"description": "B2B Commerce Settlement Engine - User & Wallet API Collection",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080/api/v1"
+		},
+		{
+			"key": "userId",
+			"value": ""
+		},
+		{
+			"key": "walletId",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/health",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8080",
+							"path": ["health"]
+						}
+					}
+				},
+				{
+					"name": "Readiness Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/ready",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8080",
+							"path": ["ready"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Create User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set('userId', jsonData.data.id);",
+									"    pm.test('User created successfully', function() {",
+									"        pm.expect(jsonData.data.id).to.not.be.empty;",
+									"        pm.expect(jsonData.data.email).to.eql('test@example.com');",
+									"        pm.expect(jsonData.data.status).to.eql('ACTIVE');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"name\": \"Test User\",\n    \"role\": \"BUYER\",\n    \"phone\": \"010-1234-5678\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": ["{{baseUrl}}"],
+							"path": ["users"]
+						}
+					}
+				},
+				{
+					"name": "Create User (SELLER)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.test('Seller created', function() {",
+									"        pm.expect(jsonData.data.role).to.eql('SELLER');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"seller@example.com\",\n    \"name\": \"Seller User\",\n    \"role\": \"SELLER\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": ["{{baseUrl}}"],
+							"path": ["users"]
+						}
+					}
+				},
+				{
+					"name": "List Users",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Users list returned', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.users).to.be.an('array');",
+									"    pm.expect(jsonData.data.total).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users?page=1&page_size=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["users"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "page_size",
+									"value": "20"
+								},
+								{
+									"key": "role",
+									"value": "BUYER",
+									"disabled": true
+								},
+								{
+									"key": "kyc_status",
+									"value": "NONE",
+									"disabled": true
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get User by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('User retrieved', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.id).to.eql(pm.collectionVariables.get('userId'));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}"]
+						}
+					}
+				},
+				{
+					"name": "Update User Profile",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Profile updated', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.name).to.eql('Updated Name');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Name\",\n    \"phone\": \"010-9999-8888\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}"]
+						}
+					}
+				},
+				{
+					"name": "Update User Role",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Role updated', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.role).to.eql('BOTH');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"BOTH\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/role",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "role"]
+						}
+					}
+				},
+				{
+					"name": "Request KYC",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('KYC requested', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.kyc_status).to.eql('PENDING');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/kyc/request",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "kyc", "request"]
+						}
+					}
+				},
+				{
+					"name": "Approve KYC",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('KYC approved', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.kyc_status).to.eql('VERIFIED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/kyc/approve",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "kyc", "approve"]
+						}
+					}
+				},
+				{
+					"name": "Reject KYC",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/kyc/reject",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "kyc", "reject"]
+						}
+					}
+				},
+				{
+					"name": "Suspend User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('User suspended', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.status).to.eql('SUSPENDED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/suspend",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "suspend"]
+						}
+					}
+				},
+				{
+					"name": "Activate User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('User activated', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.status).to.eql('ACTIVE');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/activate",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "activate"]
+						}
+					}
+				},
+				{
+					"name": "Delete User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('User deleted', function() {",
+									"    pm.expect(pm.response.code).to.eql(204);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Wallets",
+			"item": [
+				{
+					"name": "Register Wallet",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set('walletId', jsonData.data.id);",
+									"    pm.test('Wallet registered', function() {",
+									"        pm.expect(jsonData.data.id).to.not.be.empty;",
+									"        pm.expect(jsonData.data.is_verified).to.eql(false);",
+									"        pm.expect(jsonData.data.is_primary).to.eql(false);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"address\": \"0x742d35Cc6634C0532925a3b844Bc454e4438f44e\",\n    \"label\": \"My Main Wallet\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets"]
+						}
+					}
+				},
+				{
+					"name": "Register Wallet (No Label)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"address\": \"0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets"]
+						}
+					}
+				},
+				{
+					"name": "List Wallets",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Wallets list returned', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.wallets).to.be.an('array');",
+									"    pm.expect(jsonData.data.total).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets"]
+						}
+					}
+				},
+				{
+					"name": "Get Wallet by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Wallet retrieved', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.id).to.eql(pm.collectionVariables.get('walletId'));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets/{{walletId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets", "{{walletId}}"]
+						}
+					}
+				},
+				{
+					"name": "Update Wallet Label",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Label updated', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.label).to.eql('Trading Wallet');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"label\": \"Trading Wallet\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets/{{walletId}}/label",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets", "{{walletId}}", "label"]
+						}
+					}
+				},
+				{
+					"name": "Verify Wallet (EIP-712)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// NOTE: This requires a valid EIP-712 signature",
+									"// Generate signature using ethers.js or web3.js",
+									"// See scripts/generate_signature.js for example"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"signature\": \"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12\",\n    \"message\": {\n        \"nonce\": \"550e8400-e29b-41d4-a716-446655440000\",\n        \"timestamp\": 1706000000\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets/{{walletId}}/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets", "{{walletId}}", "verify"]
+						},
+						"description": "Verify wallet ownership using EIP-712 signature.\n\nTo generate a valid signature:\n1. Use the wallet's private key\n2. Sign the EIP-712 typed data with domain: B2B Settlement, chainId, verifyingContract\n3. Message contains: wallet address, nonce (UUID), timestamp (Unix seconds)"
+					}
+				},
+				{
+					"name": "Set Primary Wallet",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    pm.test('Wallet set as primary', function() {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData.data.is_primary).to.eql(true);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets/{{walletId}}/set-primary",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets", "{{walletId}}", "set-primary"]
+						},
+						"description": "Set wallet as primary. Wallet must be verified first."
+					}
+				},
+				{
+					"name": "Delete Wallet",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Wallet deleted', function() {",
+									"    pm.expect(pm.response.code).to.eql(204);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets/{{walletId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets", "{{walletId}}"]
+						},
+						"description": "Delete a non-primary wallet. Primary wallets cannot be deleted."
+					}
+				}
+			]
+		},
+		{
+			"name": "Error Cases",
+			"item": [
+				{
+					"name": "Invalid UUID Format",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Invalid UUID rejected', function() {",
+									"    pm.expect(pm.response.code).to.eql(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error.message).to.include('UUID');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/invalid-uuid",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "invalid-uuid"]
+						}
+					}
+				},
+				{
+					"name": "User Not Found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('User not found', function() {",
+									"    pm.expect(pm.response.code).to.eql(404);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error.code).to.eql('NOT_FOUND');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/00000000-0000-0000-0000-000000000000",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "00000000-0000-0000-0000-000000000000"]
+						}
+					}
+				},
+				{
+					"name": "Duplicate Email",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Duplicate email rejected', function() {",
+									"    pm.expect(pm.response.code).to.eql(409);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error.code).to.eql('CONFLICT');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"name\": \"Duplicate User\",\n    \"role\": \"BUYER\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": ["{{baseUrl}}"],
+							"path": ["users"]
+						},
+						"description": "Try to create user with existing email (run after Create User)"
+					}
+				},
+				{
+					"name": "Duplicate Wallet Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Duplicate address rejected', function() {",
+									"    pm.expect(pm.response.code).to.eql(409);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error.code).to.eql('CONFLICT');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"address\": \"0x742d35Cc6634C0532925a3b844Bc454e4438f44e\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets"]
+						},
+						"description": "Try to register same wallet address (run after Register Wallet)"
+					}
+				},
+				{
+					"name": "Invalid Ethereum Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Invalid address rejected', function() {",
+									"    pm.expect(pm.response.code).to.eql(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"address\": \"0xinvalid\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets"]
+						}
+					}
+				},
+				{
+					"name": "Set Primary (Unverified)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Unverified wallet rejected', function() {",
+									"    pm.expect(pm.response.code).to.eql(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error.message).to.include('verified');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}/wallets/{{walletId}}/set-primary",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "{{userId}}", "wallets", "{{walletId}}", "set-primary"]
+						},
+						"description": "Try to set unverified wallet as primary"
+					}
+				}
+			]
+		}
+	]
+}

@@ -40,9 +40,9 @@ func validateUUID(id string) error {
 	return nil
 }
 
-// extractAndValidateUserID extracts and validates userId from path
+// extractAndValidateUserID extracts and validates user id from path
 func extractAndValidateUserID(c *gin.Context) (string, error) {
-	userID := c.Param("userId")
+	userID := c.Param("id")
 	if err := validateUUID(userID); err != nil {
 		return "", err
 	}
@@ -64,14 +64,14 @@ func extractAndValidateWalletID(c *gin.Context) (string, error) {
 // @Tags wallets
 // @Accept json
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Param request body RegisterWalletRequest true "Wallet registration data"
 // @Success 201 {object} middleware.SuccessResponse{data=WalletResponse} "Wallet created"
 // @Failure 400 {object} middleware.ErrorResponse "Invalid input"
 // @Failure 404 {object} middleware.ErrorResponse "User not found"
 // @Failure 409 {object} middleware.ErrorResponse "Wallet address already registered"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets [post]
+// @Router /api/v1/users/{id}/wallets [post]
 func (h *Handler) RegisterWallet(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
 	if err != nil {
@@ -99,13 +99,13 @@ func (h *Handler) RegisterWallet(c *gin.Context) {
 // @Description Retrieve wallet details by external ID
 // @Tags wallets
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Param walletId path string true "Wallet external ID (UUID)"
 // @Success 200 {object} middleware.SuccessResponse{data=WalletResponse} "Wallet details"
 // @Failure 400 {object} middleware.ErrorResponse "Invalid UUID format"
 // @Failure 404 {object} middleware.ErrorResponse "Wallet not found"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets/{walletId} [get]
+// @Router /api/v1/users/{id}/wallets/{walletId} [get]
 func (h *Handler) GetWallet(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
 	if err != nil {
@@ -132,11 +132,11 @@ func (h *Handler) GetWallet(c *gin.Context) {
 // @Description Get all wallets for a user
 // @Tags wallets
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Success 200 {object} middleware.SuccessResponse{data=ListWalletsResponse} "Wallet list"
 // @Failure 400 {object} middleware.ErrorResponse "Invalid UUID format"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets [get]
+// @Router /api/v1/users/{id}/wallets [get]
 // TODO: Phase 2+ - Add pagination (page, page_size) when wallet count grows
 func (h *Handler) ListWallets(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
@@ -160,14 +160,14 @@ func (h *Handler) ListWallets(c *gin.Context) {
 // @Tags wallets
 // @Accept json
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Param walletId path string true "Wallet external ID (UUID)"
 // @Param request body UpdateLabelRequest true "Label update data"
 // @Success 200 {object} middleware.SuccessResponse{data=WalletResponse} "Updated wallet"
 // @Failure 400 {object} middleware.ErrorResponse "Invalid input"
 // @Failure 404 {object} middleware.ErrorResponse "Wallet not found"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets/{walletId}/label [put]
+// @Router /api/v1/users/{id}/wallets/{walletId}/label [put]
 func (h *Handler) UpdateLabel(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
 	if err != nil {
@@ -201,14 +201,14 @@ func (h *Handler) UpdateLabel(c *gin.Context) {
 // @Tags wallets
 // @Accept json
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Param walletId path string true "Wallet external ID (UUID)"
 // @Param request body VerifyWalletRequest true "Signature and message data"
 // @Success 200 {object} middleware.SuccessResponse{data=WalletResponse} "Verified wallet"
 // @Failure 400 {object} middleware.ErrorResponse "Invalid signature or verification failed"
 // @Failure 404 {object} middleware.ErrorResponse "Wallet not found"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets/{walletId}/verify [post]
+// @Router /api/v1/users/{id}/wallets/{walletId}/verify [post]
 func (h *Handler) VerifyWallet(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
 	if err != nil {
@@ -241,13 +241,13 @@ func (h *Handler) VerifyWallet(c *gin.Context) {
 // @Description Set a verified wallet as the primary wallet
 // @Tags wallets
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Param walletId path string true "Wallet external ID (UUID)"
 // @Success 200 {object} middleware.SuccessResponse{data=WalletResponse} "Primary wallet"
 // @Failure 400 {object} middleware.ErrorResponse "Wallet not verified"
 // @Failure 404 {object} middleware.ErrorResponse "Wallet not found"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets/{walletId}/set-primary [post]
+// @Router /api/v1/users/{id}/wallets/{walletId}/set-primary [post]
 func (h *Handler) SetPrimary(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
 	if err != nil {
@@ -274,13 +274,13 @@ func (h *Handler) SetPrimary(c *gin.Context) {
 // @Description Delete a non-primary wallet (hard delete)
 // @Tags wallets
 // @Produce json
-// @Param userId path string true "User external ID (UUID)"
+// @Param id path string true "User external ID (UUID)"
 // @Param walletId path string true "Wallet external ID (UUID)"
 // @Success 204 "Wallet deleted"
 // @Failure 400 {object} middleware.ErrorResponse "Cannot delete primary wallet"
 // @Failure 404 {object} middleware.ErrorResponse "Wallet not found"
 // @Failure 500 {object} middleware.ErrorResponse "Internal server error"
-// @Router /api/v1/users/{userId}/wallets/{walletId} [delete]
+// @Router /api/v1/users/{id}/wallets/{walletId} [delete]
 func (h *Handler) DeleteWallet(c *gin.Context) {
 	userExternalID, err := extractAndValidateUserID(c)
 	if err != nil {
